@@ -1,4 +1,7 @@
-use std::{env, fs, path::{Path, PathBuf}};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
@@ -47,8 +50,9 @@ impl AppPaths {
         let (mode, root) = if env_portable || marker_portable {
             (StorageMode::Portable, exe_dir)
         } else {
-            let dirs = ProjectDirs::from("dev", "xdCloudy", "LlamaManager")
-                .ok_or_else(|| LlamaManagerError::State("could not resolve the user data directory".into()))?;
+            let dirs = ProjectDirs::from("dev", "xdCloudy", "LlamaManager").ok_or_else(|| {
+                LlamaManagerError::State("could not resolve the user data directory".into())
+            })?;
             (StorageMode::UserData, dirs.data_local_dir().to_path_buf())
         };
 
@@ -66,7 +70,15 @@ impl AppPaths {
         }
 
         let database = data.join("llamamanager.db");
-        Ok(Self { mode, root, data, config, logs, exports, database })
+        Ok(Self {
+            mode,
+            root,
+            data,
+            config,
+            logs,
+            exports,
+            database,
+        })
     }
 }
 
@@ -77,12 +89,19 @@ mod tests {
     #[test]
     fn root_layout_is_relocatable() {
         let temp = tempfile::tempdir().unwrap();
-        let paths = AppPaths::from_root(StorageMode::Portable, temp.path().join("Llama Manager 测试")).unwrap();
+        let paths = AppPaths::from_root(
+            StorageMode::Portable,
+            temp.path().join("Llama Manager 测试"),
+        )
+        .unwrap();
 
         assert_eq!(paths.data, paths.root.join("data"));
         assert_eq!(paths.config, paths.root.join("config"));
         assert_eq!(paths.logs, paths.root.join("logs"));
-        assert_eq!(paths.database, paths.root.join("data").join("llamamanager.db"));
+        assert_eq!(
+            paths.database,
+            paths.root.join("data").join("llamamanager.db")
+        );
         assert!(paths.data.is_dir());
     }
 }

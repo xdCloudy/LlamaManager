@@ -133,7 +133,9 @@ fn discover_tools(root: &Path) -> BTreeMap<String, PathBuf> {
         let Some(stem) = stem else { continue };
         let normalized = stem.to_ascii_lowercase();
         if wanted.contains(&normalized.as_str()) {
-            found.entry(normalized).or_insert_with(|| path.to_path_buf());
+            found
+                .entry(normalized)
+                .or_insert_with(|| path.to_path_buf());
         }
     }
 
@@ -174,7 +176,8 @@ fn output_text(output: Output) -> String {
 fn extract_cli_options(help: &str) -> BTreeSet<String> {
     help.split_whitespace()
         .filter_map(|token| {
-            let cleaned = token.trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'));
+            let cleaned = token
+                .trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'));
             if cleaned.starts_with("--") && cleaned.len() > 2 {
                 Some(cleaned.to_string())
             } else if cleaned.starts_with('-')

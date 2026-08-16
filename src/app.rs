@@ -4,10 +4,10 @@ use dioxus::prelude::*;
 use rfd::FileDialog;
 
 use crate::{
-    benchmark::{default_benchmark_arguments, format_command, run_default_benchmark, BenchmarkRun},
+    benchmark::{BenchmarkRun, default_benchmark_arguments, format_command, run_default_benchmark},
     error::Result,
-    gguf::{inspect_gguf, ModelInfo},
-    llama::{inspect_installation, LlamaInstallation},
+    gguf::{ModelInfo, inspect_gguf},
+    llama::{LlamaInstallation, inspect_installation},
     paths::AppPaths,
     persistence::{BenchmarkHistoryItem, Database},
 };
@@ -91,7 +91,8 @@ impl Bootstrap {
     }
 }
 
-static BOOTSTRAP: std::sync::OnceLock<std::result::Result<Bootstrap, String>> = std::sync::OnceLock::new();
+static BOOTSTRAP: std::sync::OnceLock<std::result::Result<Bootstrap, String>> =
+    std::sync::OnceLock::new();
 
 pub fn set_bootstrap(value: std::result::Result<Bootstrap, String>) {
     let _ = BOOTSTRAP.set(value);
@@ -104,7 +105,13 @@ pub fn App() -> Element {
         return fatal_screen("Application bootstrap state was not initialized.");
     };
     let Ok(bootstrap) = bootstrap else {
-        return fatal_screen(bootstrap.as_ref().err().map(String::as_str).unwrap_or("Unknown bootstrap error"));
+        return fatal_screen(
+            bootstrap
+                .as_ref()
+                .err()
+                .map(String::as_str)
+                .unwrap_or("Unknown bootstrap error"),
+        );
     };
 
     let initial = bootstrap.initial.clone();
@@ -115,7 +122,10 @@ pub fn App() -> Element {
         if state.read().activity.is_busy() {
             return;
         }
-        let Some(folder) = FileDialog::new().set_title("Select llama.cpp installation").pick_folder() else {
+        let Some(folder) = FileDialog::new()
+            .set_title("Select llama.cpp installation")
+            .pick_folder()
+        else {
             return;
         };
 
@@ -134,7 +144,10 @@ pub fn App() -> Element {
             match result {
                 Ok(installation) => {
                     current.installation = Some(installation);
-                    current.notice = Some((true, "llama.cpp installation inspected from real binaries.".into()));
+                    current.notice = Some((
+                        true,
+                        "llama.cpp installation inspected from real binaries.".into(),
+                    ));
                 }
                 Err(error) => current.notice = Some((false, error.to_string())),
             }
@@ -183,7 +196,8 @@ pub fn App() -> Element {
             let current = state.read();
             let Some(installation) = current.installation.clone() else {
                 drop(current);
-                state.write().notice = Some((false, "Select a llama.cpp installation first.".into()));
+                state.write().notice =
+                    Some((false, "Select a llama.cpp installation first.".into()));
                 return;
             };
             let Some(model) = current.model.clone() else {
@@ -195,7 +209,10 @@ pub fn App() -> Element {
         };
 
         if installation.bench.is_none() {
-            state.write().notice = Some((false, "The selected installation does not contain llama-bench.".into()));
+            state.write().notice = Some((
+                false,
+                "The selected installation does not contain llama-bench.".into(),
+            ));
             return;
         }
 
@@ -215,14 +232,21 @@ pub fn App() -> Element {
                 Ok((run, history)) => {
                     current.history = history;
                     current.latest_run = Some(run);
-                    current.notice = Some((true, "Benchmark completed with real llama-bench output.".into()));
+                    current.notice = Some((
+                        true,
+                        "Benchmark completed with real llama-bench output.".into(),
+                    ));
                 }
                 Err(error) => current.notice = Some((false, error.to_string())),
             }
         });
     };
 
-    let can_benchmark = snapshot.installation.as_ref().and_then(|item| item.bench.as_ref()).is_some()
+    let can_benchmark = snapshot
+        .installation
+        .as_ref()
+        .and_then(|item| item.bench.as_ref())
+        .is_some()
         && snapshot.model.is_some()
         && !snapshot.activity.is_busy();
 
@@ -317,7 +341,11 @@ fn fatal_screen(message: &str) -> Element {
 }
 
 fn nav_class(current: Section, item: Section) -> &'static str {
-    if current == item { "nav-item active" } else { "nav-item" }
+    if current == item {
+        "nav-item active"
+    } else {
+        "nav-item"
+    }
 }
 
 fn section_title(section: Section) -> &'static str {
@@ -334,8 +362,14 @@ fn status_row(label: &str, value: &str) -> Element {
 }
 
 fn overview(snapshot: &UiState) -> Element {
-    let prompt = snapshot.latest_run.as_ref().and_then(BenchmarkRun::prompt_tps);
-    let decode = snapshot.latest_run.as_ref().and_then(BenchmarkRun::decode_tps);
+    let prompt = snapshot
+        .latest_run
+        .as_ref()
+        .and_then(BenchmarkRun::prompt_tps);
+    let decode = snapshot
+        .latest_run
+        .as_ref()
+        .and_then(BenchmarkRun::decode_tps);
     rsx! {
         section { class: "hero panel",
             div { class: "eyebrow", "EVIDENCE FIRST" }
@@ -523,7 +557,9 @@ fn empty_state(title: &str, detail: &str) -> Element {
 }
 
 fn format_metric(value: Option<f64>, unit: &str) -> String {
-    value.map(|value| format!("{value:.2} {unit}")).unwrap_or_else(|| "—".into())
+    value
+        .map(|value| format!("{value:.2} {unit}"))
+        .unwrap_or_else(|| "—".into())
 }
 
 fn human_bytes(value: u64) -> String {
@@ -540,14 +576,20 @@ fn format_number(value: u64) -> String {
     let text = value.to_string();
     let mut out = String::new();
     for (index, ch) in text.chars().rev().enumerate() {
-        if index > 0 && index % 3 == 0 { out.push(','); }
+        if index > 0 && index % 3 == 0 {
+            out.push(',');
+        }
         out.push(ch);
     }
     out.chars().rev().collect()
 }
 
 fn short_hash(hash: &str) -> String {
-    if hash.len() > 18 { format!("{}…{}", &hash[..10], &hash[hash.len() - 6..]) } else { hash.into() }
+    if hash.len() > 18 {
+        format!("{}…{}", &hash[..10], &hash[hash.len() - 6..])
+    } else {
+        hash.into()
+    }
 }
 
 fn file_name(path: &str) -> String {

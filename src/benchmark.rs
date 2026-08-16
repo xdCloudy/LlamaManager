@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     error::{LlamaManagerError, Result},
     gguf::ModelInfo,
-    llama::{now_ms, LlamaInstallation},
+    llama::{LlamaInstallation, now_ms},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,7 +155,11 @@ fn parse_json_row(row: &Value) -> Result<BenchmarkSample> {
         .ok_or_else(|| LlamaManagerError::BenchmarkParse("JSON row is missing avg_ts".into()))?;
     let prompt_tokens = row.get("n_prompt").and_then(Value::as_u64).unwrap_or(0);
     let generated_tokens = row.get("n_gen").and_then(Value::as_u64).unwrap_or(0);
-    let test = test_label(prompt_tokens, generated_tokens, row.get("n_depth").and_then(Value::as_u64).unwrap_or(0));
+    let test = test_label(
+        prompt_tokens,
+        generated_tokens,
+        row.get("n_depth").and_then(Value::as_u64).unwrap_or(0),
+    );
 
     let samples_tokens_per_second = row
         .get("samples_ts")
@@ -165,8 +169,14 @@ fn parse_json_row(row: &Value) -> Result<BenchmarkSample> {
 
     Ok(BenchmarkSample {
         test,
-        backend: row.get("backends").and_then(Value::as_str).map(str::to_string),
-        model_type: row.get("model_type").and_then(Value::as_str).map(str::to_string),
+        backend: row
+            .get("backends")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        model_type: row
+            .get("model_type")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         prompt_tokens,
         generated_tokens,
         avg_tokens_per_second: avg,
@@ -192,12 +202,16 @@ fn parse_markdown_output(raw: &str) -> Result<Vec<BenchmarkSample>> {
             continue;
         };
 
-        let Some(speed_cell) = cells.last() else { continue };
+        let Some(speed_cell) = cells.last() else {
+            continue;
+        };
         let speed_token = speed_cell
             .split_whitespace()
             .next()
             .and_then(|value| value.parse::<f64>().ok());
-        let Some(avg_tokens_per_second) = speed_token else { continue };
+        let Some(avg_tokens_per_second) = speed_token else {
+            continue;
+        };
 
         let (prompt_tokens, generated_tokens) = parse_test_counts(test_cell);
         rows.push(BenchmarkSample {
@@ -248,7 +262,11 @@ fn test_label(prompt: u64, generated: u64, depth: u64) -> String {
         (0, g) if g > 0 => format!("tg{g}"),
         (p, g) => format!("pg{p},{g}"),
     };
-    if depth > 0 { format!("{base} @ d{depth}") } else { base }
+    if depth > 0 {
+        format!("{base} @ d{depth}")
+    } else {
+        base
+    }
 }
 
 pub fn format_command(program: &std::path::Path, args: &[String]) -> String {

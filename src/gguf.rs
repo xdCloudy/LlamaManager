@@ -5,8 +5,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::{
+    error::{LlamaManagerError, Result},
+    llama::{now_ms, sha256_file},
+};
 use serde::{Deserialize, Serialize};
-use crate::{error::{LlamaManagerError, Result}, llama::{now_ms, sha256_file}};
 
 const MAX_STRING_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_ARRAY_PREVIEW: usize = 32;
@@ -19,7 +22,11 @@ pub enum MetadataValue {
     Float(f64),
     Bool(bool),
     String(String),
-    Array { element_type: u32, len: u64, preview: Vec<String> },
+    Array {
+        element_type: u32,
+        len: u64,
+        preview: Vec<String>,
+    },
 }
 
 impl MetadataValue {
@@ -30,9 +37,21 @@ impl MetadataValue {
             Self::Float(value) => format!("{value:.4}"),
             Self::Bool(value) => value.to_string(),
             Self::String(value) => value.clone(),
-            Self::Array { element_type, len, preview } => {
-                let suffix = if *len as usize > preview.len() { ", …" } else { "" };
-                format!("array(type={element_type}, len={len}) [{}{}]", preview.join(", "), suffix)
+            Self::Array {
+                element_type,
+                len,
+                preview,
+            } => {
+                let suffix = if *len as usize > preview.len() {
+                    ", …"
+                } else {
+                    ""
+                };
+                format!(
+                    "array(type={element_type}, len={len}) [{}{}]",
+                    preview.join(", "),
+                    suffix
+                )
             }
         }
     }
@@ -66,7 +85,9 @@ pub fn inspect_gguf(path: &Path) -> Result<ModelInfo> {
     let mut magic = [0_u8; 4];
     reader.read_exact(&mut magic)?;
     if &magic != b"GGUF" {
-        return Err(LlamaManagerError::Gguf("file does not start with GGUF magic".into()));
+        return Err(LlamaManagerError::Gguf(
+            "file does not start with GGUF magic".into(),
+        ));
     }
 
     let gguf_version = read_u32(&mut reader)?;
@@ -94,9 +115,9 @@ pub fn inspect_gguf(path: &Path) -> Result<ModelInfo> {
 
     let name = metadata_string(&metadata, "general.name");
     let architecture = metadata_string(&metadata, "general.architecture");
-    let context_length = architecture.as_ref().and_then(|arch| {
-        metadata_u64(&metadata, &format!("{arch}.context_length"))
-    });
+    let context_length = architecture
+        .as_ref()
+        .and_then(|arch| metadata_u64(&metadata, &format!("{arch}.context_length")));
     let quantization_version = metadata_u64(&metadata, "general.quantization_version");
     let sha256 = sha256_file(path)?;
 
@@ -147,7 +168,11 @@ fn read_value<R: Read>(reader: &mut R, value_type: u32) -> Result<MetadataValue>
         10 => MetadataValue::UInt(read_u64(reader)?),
         11 => MetadataValue::Int(read_i64(reader)?),
         12 => MetadataValue::Float(read_f64(reader)?),
-        other => return Err(LlamaManagerError::Gguf(format!("unknown metadata value type {other}"))),
+        other => {
+            return Err(LlamaManagerError::Gguf(format!(
+                "unknown metadata value type {other}"
+            )));
+        }
     })
 }
 
@@ -155,7 +180,9 @@ fn read_array<R: Read>(reader: &mut R) -> Result<MetadataValue> {
     let element_type = read_u32(reader)?;
     let len = read_u64(reader)?;
     if len > 100_000_000 {
-        return Err(LlamaManagerError::Gguf(format!("metadata array length {len} exceeds safety limit")));
+        return Err(LlamaManagerError::Gguf(format!(
+            "metadata array length {len} exceeds safety limit"
+        )));
     }
 
     let mut preview = Vec::with_capacity((len as usize).min(MAX_ARRAY_PREVIEW));
@@ -166,17 +193,24 @@ fn read_array<R: Read>(reader: &mut R) -> Result<MetadataValue> {
         }
     }
 
-    Ok(MetadataValue::Array { element_type, len, preview })
+    Ok(MetadataValue::Array {
+        element_type,
+        len,
+        preview,
+    })
 }
 
 fn read_string<R: Read>(reader: &mut R) -> Result<String> {
     let len = read_u64(reader)?;
     if len > MAX_STRING_BYTES {
-        return Err(LlamaManagerError::Gguf(format!("string length {len} exceeds safety limit")));
+        return Err(LlamaManagerError::Gguf(format!(
+            "string length {len} exceeds safety limit"
+        )));
     }
     let mut bytes = vec![0_u8; len as usize];
     reader.read_exact(&mut bytes)?;
-    String::from_utf8(bytes).map_err(|error| LlamaManagerError::Gguf(format!("invalid UTF-8 metadata string: {error}")))
+    String::from_utf8(bytes)
+        .map_err(|error| LlamaManagerError::Gguf(format!("invalid UTF-8 metadata string: {error}")))
 }
 
 fn read_exact<const N: usize, R: Read>(reader: &mut R) -> Result<[u8; N]> {
@@ -185,16 +219,36 @@ fn read_exact<const N: usize, R: Read>(reader: &mut R) -> Result<[u8; N]> {
     Ok(bytes)
 }
 
-fn read_u8<R: Read>(reader: &mut R) -> Result<u8> { Ok(read_exact::<1, _>(reader)?[0]) }
-fn read_i8<R: Read>(reader: &mut R) -> Result<i8> { Ok(read_u8(reader)? as i8) }
-fn read_u16<R: Read>(reader: &mut R) -> Result<u16> { Ok(u16::from_le_bytes(read_exact(reader)?)) }
-fn read_i16<R: Read>(reader: &mut R) -> Result<i16> { Ok(i16::from_le_bytes(read_exact(reader)?)) }
-fn read_u32<R: Read>(reader: &mut R) -> Result<u32> { Ok(u32::from_le_bytes(read_exact(reader)?)) }
-fn read_i32<R: Read>(reader: &mut R) -> Result<i32> { Ok(i32::from_le_bytes(read_exact(reader)?)) }
-fn read_u64<R: Read>(reader: &mut R) -> Result<u64> { Ok(u64::from_le_bytes(read_exact(reader)?)) }
-fn read_i64<R: Read>(reader: &mut R) -> Result<i64> { Ok(i64::from_le_bytes(read_exact(reader)?)) }
-fn read_f32<R: Read>(reader: &mut R) -> Result<f32> { Ok(f32::from_le_bytes(read_exact(reader)?)) }
-fn read_f64<R: Read>(reader: &mut R) -> Result<f64> { Ok(f64::from_le_bytes(read_exact(reader)?)) }
+fn read_u8<R: Read>(reader: &mut R) -> Result<u8> {
+    Ok(read_exact::<1, _>(reader)?[0])
+}
+fn read_i8<R: Read>(reader: &mut R) -> Result<i8> {
+    Ok(read_u8(reader)? as i8)
+}
+fn read_u16<R: Read>(reader: &mut R) -> Result<u16> {
+    Ok(u16::from_le_bytes(read_exact(reader)?))
+}
+fn read_i16<R: Read>(reader: &mut R) -> Result<i16> {
+    Ok(i16::from_le_bytes(read_exact(reader)?))
+}
+fn read_u32<R: Read>(reader: &mut R) -> Result<u32> {
+    Ok(u32::from_le_bytes(read_exact(reader)?))
+}
+fn read_i32<R: Read>(reader: &mut R) -> Result<i32> {
+    Ok(i32::from_le_bytes(read_exact(reader)?))
+}
+fn read_u64<R: Read>(reader: &mut R) -> Result<u64> {
+    Ok(u64::from_le_bytes(read_exact(reader)?))
+}
+fn read_i64<R: Read>(reader: &mut R) -> Result<i64> {
+    Ok(i64::from_le_bytes(read_exact(reader)?))
+}
+fn read_f32<R: Read>(reader: &mut R) -> Result<f32> {
+    Ok(f32::from_le_bytes(read_exact(reader)?))
+}
+fn read_f64<R: Read>(reader: &mut R) -> Result<f64> {
+    Ok(f64::from_le_bytes(read_exact(reader)?))
+}
 
 #[cfg(test)]
 mod tests {
@@ -229,6 +283,9 @@ mod tests {
         let key = read_string(&mut cursor).unwrap();
         assert_eq!(key, "general.architecture");
         let ty = read_u32(&mut cursor).unwrap();
-        assert_eq!(read_value(&mut cursor, ty).unwrap().display_compact(), "qwen35");
+        assert_eq!(
+            read_value(&mut cursor, ty).unwrap().display_compact(),
+            "qwen35"
+        );
     }
 }

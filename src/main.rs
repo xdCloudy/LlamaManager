@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use llamamanager::app::{set_bootstrap, App, Bootstrap};
+use llamamanager::app::{App, Bootstrap, set_bootstrap};
 use tracing_subscriber::EnvFilter;
 
 fn main() {

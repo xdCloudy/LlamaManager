@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     benchmark::BenchmarkRun,
     error::Result,
     gguf::ModelInfo,
-    llama::{now_ms, LlamaInstallation},
+    llama::{LlamaInstallation, now_ms},
 };
 
 const MIGRATION_1: &str = include_str!("../migrations/0001_initial.sql");
@@ -147,7 +147,10 @@ impl Database {
                 id: run.id.clone(),
                 started_at_unix_ms: run.started_at_unix_ms,
                 model_path,
-                backend: run.backend.clone().or_else(|| run.samples.iter().find_map(|sample| sample.backend.clone())),
+                backend: run
+                    .backend
+                    .clone()
+                    .or_else(|| run.samples.iter().find_map(|sample| sample.backend.clone())),
                 prompt_tps: run.prompt_tps(),
                 decode_tps: run.decode_tps(),
                 command_preview: run.command_preview(),
@@ -165,7 +168,9 @@ impl Database {
                 |row| row.get(0),
             )
             .optional()?;
-        payload.map(|json| serde_json::from_str(&json).map_err(Into::into)).transpose()
+        payload
+            .map(|json| serde_json::from_str(&json).map_err(Into::into))
+            .transpose()
     }
 
     pub fn latest_model(&self) -> Result<Option<ModelInfo>> {
@@ -177,7 +182,9 @@ impl Database {
                 |row| row.get(0),
             )
             .optional()?;
-        payload.map(|json| serde_json::from_str(&json).map_err(Into::into)).transpose()
+        payload
+            .map(|json| serde_json::from_str(&json).map_err(Into::into))
+            .transpose()
     }
 }
 
@@ -194,7 +201,11 @@ mod tests {
 
         let connection = Connection::open(path).unwrap();
         let count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM schema_migrations WHERE version = 1", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version = 1",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(count, 1);
     }
