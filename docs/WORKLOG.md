@@ -53,3 +53,58 @@ Current CI now restores `cargo fmt --all -- --check`, retains the strict compile
 ### Next
 
 Finish strict CI/artifact verification, then native Windows visual/runtime validation. Only then promote Milestone 1 to fully verified and begin Milestone 2 model-library/compatibility work.
+
+---
+
+## 2026-08-16 — Full production issue/dependency plan
+
+### Goal
+
+Turn the milestone roadmap into an executable GitHub backlog with explicit prerequisites, evidence gates, and a hard path from the completed baseline to a production-ready v1.0 release.
+
+### Changed
+
+- Added completed M0 issue #11 so the dependency chain has an explicit starting node.
+- Expanded milestone epics #1–#10 into implementation-sized feature, verification, and C5-promotion issues.
+- Added detailed acceptance criteria covering automated tests, real Windows/runtime evidence, failure/recovery, persistence/reproducibility, UI truthfulness, accessibility, portability, diagnostics, updates, rollback, and production acceptance.
+- Added explicit `Blocked by:` prerequisites to child issues and milestone epics.
+- Added per-milestone C5 promotion gates: #16, #22, #30, #37, #43, #50, #57, #65, #73, and #84.
+- Added final production-readiness/release issue #85.
+- Added `docs/11_ISSUE_DEPENDENCY_GRAPH.md` with the critical path and permitted intra-milestone parallelism.
+- Marked M1 as the currently active epic and later milestone epics as blocked.
+
+### Current execution state
+
+```text
+#11 M0 C5 / CLOSED
+  ↓
+#1 M1 C3 / ACTIVE
+  ↓ via #16
+#2 M2 BLOCKED
+  ↓ via #22
+#3 M3 BLOCKED
+  ↓ via #30
+#4 M4 BLOCKED
+  ↓ via #37
+#5 M5 BLOCKED
+  ↓ via #43
+#6 M6 BLOCKED
+  ↓ via #50
+#7 M7 BLOCKED
+  ↓ via #57
+#8 M8 BLOCKED
+  ↓ via #65
+#9 M9 BLOCKED
+  ↓ via #73
+#10 M10 BLOCKED
+  ↓ via #84
+#85 v1.0 production audit/release BLOCKED
+```
+
+### Evidence discipline
+
+Issue creation and dependency planning do **not** advance implementation maturity by themselves. M1 remains C3 until real runtime/UI/benchmark evidence is completed. M2–M10 remain C1 until their prerequisites close and their own end-to-end evidence is produced.
+
+### Next
+
+Execute only the unblocked M1 verification work (#12–#15), then run #16 as the C5 promotion gate. Do not begin M2 implementation until that gate has passed and #1 is closure-ready.
