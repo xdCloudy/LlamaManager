@@ -19,6 +19,16 @@ The project is being built as verified vertical slices. The current source tree 
 
 The larger product roadmap remains in [`docs/`](docs/). Future stages cover the model library, `models.ini`, server/router lifecycle, live telemetry, benchmark laboratory, staged autotuning, rollback, diagnostics, and release polish.
 
+## Execution plan
+
+The project uses three linked planning/evidence layers:
+
+- [`docs/08_IMPLEMENTATION_ROADMAP.md`](docs/08_IMPLEMENTATION_ROADMAP.md) — what each milestone delivers
+- [`docs/10_COMPLETION_MATRIX.md`](docs/10_COMPLETION_MATRIX.md) — C0–C5 maturity and G1–G10 evidence required before a milestone can close
+- [`docs/11_ISSUE_DEPENDENCY_GRAPH.md`](docs/11_ISSUE_DEPENDENCY_GRAPH.md) — exact issue prerequisites, permitted parallelism, C5 promotion gates, and the critical path to v1.0
+
+GitHub issues #1–#10 are the milestone epics. M0 is recorded as completed in #11, implementation/verification work is decomposed through #84, and #85 is the final production-readiness audit/release gate. Later milestone epics are explicitly blocked until the previous milestone reaches C5.
+
 ## Build
 
 The normal development target is Windows 10/11 x64 with the stable MSVC Rust toolchain:
