@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Assemble portable bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist\LlamaManager -Force | Out-Null
+          Copy-Item target\release\llamamanager.exe dist\LlamaManager\LlamaManager.exe
+          Copy-Item portable.flag dist\LlamaManager\portable.flag
+          Copy-Item README.md dist\LlamaManager\README.md
+          Copy-Item LICENSE dist\LlamaManager\LICENSE
+          Compress-Archive -Path dist\LlamaManager -DestinationPath dist\LlamaManager-windows-x64.zip -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LlamaManager-windows-x64
+          path: dist/LlamaManager-windows-x64.zip
+
+      - name: Publish GitHub release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LlamaManager-windows-x64.zip

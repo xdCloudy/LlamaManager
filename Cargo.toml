@@ -1,0 +1,31 @@
+[package]
+name = "llamamanager"
+version = "0.1.0"
+edition = "2024"
+description = "Portable Windows control plane for llama.cpp installations and GGUF models"
+repository = "https://github.com/xdCloudy/LlamaManager"
+license = "MIT"
+publish = false
+
+[dependencies]
+dioxus = { version = "0.7.9", features = ["desktop"] }
+directories = "6.0.0"
+hex = "0.4.3"
+rfd = "0.17.2"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11.0"
+thiserror = "2.0.19"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.24.0", features = ["v4", "serde"] }
+walkdir = "2.5.0"
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

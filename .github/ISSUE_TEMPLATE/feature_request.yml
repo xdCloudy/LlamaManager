@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a capability that fits the product roadmap
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: llama.cpp / model evidence
+      description: If this concerns llama.cpp behavior, include the relevant binary/version/help output or upstream source/docs rather than assumptions.
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Likely roadmap area
+      options:
+        - Model library / compatibility
+        - models.ini
+        - Server lifecycle
+        - Router / switching
+        - Telemetry
+        - Benchmarking
+        - Autotuning
+        - Experimental features
+        - Product polish
+        - Other / unsure

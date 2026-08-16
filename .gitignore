@@ -1,0 +1,11 @@
+/target/
+/data/
+/config/
+/logs/
+/exports/
+*.db
+*.db-shm
+*.db-wal
+*.pdb
+.DS_Store
+Thumbs.db
