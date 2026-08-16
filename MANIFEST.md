@@ -35,8 +35,10 @@
 - `docs/07_TEST_STRATEGY.md` — verification strategy
 - `docs/08_IMPLEMENTATION_ROADMAP.md` — milestone roadmap
 - `docs/09_AGENT_DEVELOPMENT_RULES.md` — implementation discipline
+- `docs/10_COMPLETION_MATRIX.md` — C0–C5 maturity and G1–G10 completion contract
+- `docs/11_ISSUE_DEPENDENCY_GRAPH.md` — issue prerequisites, promotion gates, critical path, and v1.0 release dependency chain
 - `docs/BUILD_STATUS.md` — evidence-based current verification state
-- `docs/WORKLOG.md` — concise current tranche log
+- `docs/WORKLOG.md` — concise implementation/planning tranche log
 - `docs/ORIGINAL_PROMPT.md` — preserved original comprehensive brief
 
 ## Automation
