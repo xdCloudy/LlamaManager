@@ -75,8 +75,9 @@ Read in this order:
 9. `08_IMPLEMENTATION_ROADMAP.md`
 10. `09_AGENT_DEVELOPMENT_RULES.md`
 11. `10_COMPLETION_MATRIX.md`
+12. `11_ISSUE_DEPENDENCY_GRAPH.md`
 
-`08_IMPLEMENTATION_ROADMAP.md` defines what each milestone should deliver. `10_COMPLETION_MATRIX.md` is the authoritative evidence/closure contract: milestones progress from C0 through C5 and their GitHub issues must not close before every applicable completion gate is satisfied.
+`08_IMPLEMENTATION_ROADMAP.md` defines what each milestone should deliver. `10_COMPLETION_MATRIX.md` is the authoritative evidence/closure contract: milestones progress from C0 through C5 and their GitHub issues must not close before every applicable completion gate is satisfied. `11_ISSUE_DEPENDENCY_GRAPH.md` defines execution order, internal parallelism, promotion gates, and the critical path to the v1.0 production-readiness audit.
 
 `ORIGINAL_PROMPT.md` preserves the original complete project brief verbatim for reference.
 
@@ -107,4 +108,4 @@ Normal operation must not require a terminal.
 
 ## Current implementation state
 
-See `BUILD_STATUS.md`, `WORKLOG.md`, and `10_COMPLETION_MATRIX.md` for evidence-based implementation and verification status. The roadmap describes intended work; source, CI, runtime evidence, and the completion gates determine what is actually complete.
+See `BUILD_STATUS.md`, `WORKLOG.md`, `10_COMPLETION_MATRIX.md`, and `11_ISSUE_DEPENDENCY_GRAPH.md` for evidence-based implementation, verification, and execution status. The roadmap describes intended work; source, CI, runtime evidence, completion gates, and prerequisite closure determine what is actually complete and what is currently unblocked.
