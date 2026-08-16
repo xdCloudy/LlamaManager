@@ -74,6 +74,9 @@ Read in this order:
 8. `07_TEST_STRATEGY.md`
 9. `08_IMPLEMENTATION_ROADMAP.md`
 10. `09_AGENT_DEVELOPMENT_RULES.md`
+11. `10_COMPLETION_MATRIX.md`
+
+`08_IMPLEMENTATION_ROADMAP.md` defines what each milestone should deliver. `10_COMPLETION_MATRIX.md` is the authoritative evidence/closure contract: milestones progress from C0 through C5 and their GitHub issues must not close before every applicable completion gate is satisfied.
 
 `ORIGINAL_PROMPT.md` preserves the original complete project brief verbatim for reference.
 
@@ -104,4 +107,4 @@ Normal operation must not require a terminal.
 
 ## Current implementation state
 
-See `BUILD_STATUS.md` and `WORKLOG.md` for evidence-based implementation and verification status. The roadmap describes intended work; source and CI determine what is actually complete.
+See `BUILD_STATUS.md`, `WORKLOG.md`, and `10_COMPLETION_MATRIX.md` for evidence-based implementation and verification status. The roadmap describes intended work; source, CI, runtime evidence, and the completion gates determine what is actually complete.
