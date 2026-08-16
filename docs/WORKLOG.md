@@ -17,27 +17,39 @@ Publish the clean LlamaManager source baseline and the first real installation â
 - Capability evidence collection from selected binaries added.
 - GGUF metadata/header inspection added.
 - Real `llama-bench` command preview, execution, raw-output retention, parsing, and persistent benchmark history added.
-- Initial vaporwave desktop styling added.
-- CI/release workflows added.
-- Full product specification, architecture, design, integration, benchmark/autotuner, persistence, test, roadmap, and engineering-rule documentation added.
+- Initial restrained-vaporwave desktop styling added.
+- Windows CI and release workflows added.
+- `Cargo.lock` generated and committed.
+- Full product specification, architecture, design, integration, benchmark/autotuner, persistence, test, roadmap, engineering-rule documentation, and preserved original product brief added.
 
 ### Verified
 
-- Repository structure and documentation consistency reviewed before upload.
-- TOML/YAML/Rust compilation is **not yet claimed green** in the authoring environment because that environment does not contain Rust or a Windows desktop runtime.
+GitHub Actions on Windows has produced a green source/build checkpoint with:
+
+```text
+cargo check --all-targets                                  PASS
+cargo test --all-targets                                   PASS
+cargo clippy --all-targets --all-features -- -D warnings  PASS
+cargo build --release                                      PASS
+```
+
+The first CI cycle found two strict Clippy failures in llama.cpp capability parsing; both were fixed and re-run successfully. Rustfmt was applied to the source tree before the green checkpoint.
+
+Current CI now restores `cargo fmt --all -- --check`, retains the strict compile/test/Clippy/release gates, performs a best-effort native process smoke test, and uploads a portable Windows artifact.
 
 ### Remaining
 
-- Let GitHub Actions execute the Windows Rust quality gates.
-- Repair any compiler/linter/test failures found by CI before beginning Milestone 2.
-- Launch the real Dioxus application on Windows and perform rendered visual verification.
-- Exercise Milestone 1 against a real arbitrary llama.cpp installation and GGUF model on Windows.
+- Confirm the latest strict current-head CI run, including `cargo fmt --check` and artifact assembly.
+- Inspect the desktop smoke-test result.
+- Launch the real Dioxus application on an interactive Windows desktop and visually verify rendered UI.
+- Exercise Milestone 1 against a real arbitrary llama.cpp installation and GGUF model.
+- Confirm benchmark persistence across restart using real runtime evidence.
 
 ### Risks
 
-- Dioxus/framework API drift or Rust dependency incompatibilities may be exposed by first CI.
-- Real llama-bench output variants may require additional parser fixtures.
+- Real llama-bench output variants may require more parser fixtures despite current upstream JSON-field alignment.
+- A headless/hosted CI desktop process can reveal early crashes but cannot replace interactive visual QA.
 
 ### Next
 
-CI-driven repair until green, then native Windows UI/runtime verification and Milestone 1 end-to-end validation.
+Finish strict CI/artifact verification, then native Windows visual/runtime validation. Only then promote Milestone 1 to fully verified and begin Milestone 2 model-library/compatibility work.

@@ -20,11 +20,20 @@ select llama.cpp installation
 
 The source intentionally does not claim later roadmap features as implemented.
 
-## Verification state
+## Verified Windows CI evidence
 
-The source-authoring environment used for this initial GitHub tranche does not contain a Rust/Cargo toolchain or Windows desktop session. Therefore **the current commit is not considered green until GitHub Actions and native Windows verification say so**.
+GitHub Actions on `windows-latest` has already verified the source through the following gates on the initial green checkpoint:
 
-Required CI gates:
+```text
+cargo check --all-targets                                  PASS
+cargo test --all-targets                                   PASS
+cargo clippy --all-targets --all-features -- -D warnings  PASS
+cargo build --release                                      PASS
+```
+
+The first CI repair cycle also applied `rustfmt`, and subsequent source fixes were written against the formatted tree. `Cargo.lock` is now committed for reproducible application dependency resolution.
+
+The current CI workflow additionally enforces:
 
 ```text
 cargo fmt --all -- --check
@@ -34,13 +43,17 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-Required native verification:
+and packages a `LlamaManager-windows-x64.zip` workflow artifact. The latest strict run is the authoritative source for whether the current head remains green.
 
-- Dioxus app launches on Windows.
+## Native verification still required
+
+Compilation and CI do not prove the external-runtime or rendered-UI claims. Before Milestone 1 is called fully verified, perform native Windows validation with real inputs:
+
+- Dioxus app launches and remains healthy.
 - Rendered UI is visually inspected at supported desktop sizes.
 - Real arbitrary llama.cpp installation discovery succeeds.
 - Real arbitrary GGUF metadata inspection succeeds.
 - Real llama-bench execution succeeds and non-zero exit remains an error.
 - Persisted benchmark history survives restart.
 
-Any failure in those gates is a blocking defect to repair before moving deeper into the roadmap.
+The CI desktop-process smoke step is useful crash evidence but is not a substitute for rendered visual inspection.
