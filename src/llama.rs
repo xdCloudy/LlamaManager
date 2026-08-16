@@ -75,10 +75,10 @@ pub fn inspect_installation(root: &Path) -> Result<LlamaInstallation> {
 
     if let Some(bench_tool) = bench.as_mut() {
         let options = extract_cli_options(&bench_tool.help_output);
-        if options.contains("--list-devices") {
-            if let Ok(output) = run_probe(&bench_tool.path, &["--list-devices"]) {
-                bench_tool.device_output = output_text(output);
-            }
+        if options.contains("--list-devices")
+            && let Ok(output) = run_probe(&bench_tool.path, &["--list-devices"])
+        {
+            bench_tool.device_output = output_text(output);
         }
     }
 
@@ -178,17 +178,13 @@ fn extract_cli_options(help: &str) -> BTreeSet<String> {
         .filter_map(|token| {
             let cleaned = token
                 .trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'));
-            if cleaned.starts_with("--") && cleaned.len() > 2 {
-                Some(cleaned.to_string())
-            } else if cleaned.starts_with('-')
+            let is_long = cleaned.starts_with("--") && cleaned.len() > 2;
+            let is_short = cleaned.starts_with('-')
                 && !cleaned.starts_with("--")
                 && cleaned.len() > 1
-                && cleaned.chars().skip(1).all(|c| c.is_ascii_alphanumeric())
-            {
-                Some(cleaned.to_string())
-            } else {
-                None
-            }
+                && cleaned.chars().skip(1).all(|c| c.is_ascii_alphanumeric());
+
+            (is_long || is_short).then(|| cleaned.to_string())
         })
         .collect()
 }
