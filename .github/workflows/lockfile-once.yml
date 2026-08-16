@@ -1,0 +1,31 @@
+name: Generate Cargo.lock once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/lockfile-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate and commit Cargo.lock
+        shell: pwsh
+        run: |
+          cargo generate-lockfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git rm ".github/workflows/lockfile-once.yml"
+          git commit -m "chore: commit Cargo.lock"
+          git push origin HEAD:main
