@@ -23,202 +23,55 @@ jobs:
         run: |
           $path = "src/app.rs"
           $s = Get-Content $path -Raw
-
-          function Replace-Exact([string]$old, [string]$new) {
-            if (-not $script:s.Contains($old)) { throw "Expected app.rs block not found:`n$old" }
+          function R([string]$old, [string]$new) {
+            if (-not $script:s.Contains($old)) { throw "missing patch anchor: $old" }
             $script:s = $script:s.Replace($old, $new)
           }
 
-          Replace-Exact @'
-          use std::{path::PathBuf, thread};
-          '@ @'
+          R 'use std::{path::PathBuf, thread};' @'
           use std::{
               path::PathBuf,
-              sync::{
-                  atomic::{AtomicBool, Ordering},
-                  Arc,
-              },
+              sync::{atomic::{AtomicBool, Ordering}, Arc},
               thread,
           };
           '@
-
-          Replace-Exact @'
-              llama::{LlamaInstallation, inspect_installation},
-              paths::AppPaths,
-              persistence::{BenchmarkHistoryItem, Database},
-          '@ @'
+          R '    llama::{LlamaInstallation, inspect_installation},' @'
               llama::{LlamaInstallation, inspect_installation},
               model_library::{ScanProgress, manual_add_model, scan_root},
               model_store::{ModelRecord, ModelStore},
-              paths::AppPaths,
-              persistence::{BenchmarkHistoryItem, Database},
           '@
-
-          Replace-Exact @'
-          enum Section {
-              Overview,
-              Benchmark,
-              History,
-              System,
-          }
-          '@ @'
-          enum Section {
-              Overview,
-              Library,
-              Benchmark,
-              History,
-              System,
-          }
-          '@
-
-          Replace-Exact @'
-              InspectingInstallation,
-              InspectingModel,
-              Benchmarking,
-          '@ @'
-              InspectingInstallation,
-              InspectingModel,
-              ScanningLibrary,
-              Benchmarking,
-          '@
-
-          Replace-Exact @'
-                  Self::InspectingModel => "READING GGUF",
-                  Self::Benchmarking => "BENCHMARKING",
-          '@ @'
-                  Self::InspectingModel => "READING GGUF",
-                  Self::ScanningLibrary => "SCANNING LIBRARY",
-                  Self::Benchmarking => "BENCHMARKING",
-          '@
-
-          Replace-Exact @'
-              db: Database,
-              section: Section,
-          '@ @'
+          R '    Overview,' "    Overview,`n    Library,"
+          R '    InspectingModel,' "    InspectingModel,`n    ScanningLibrary,"
+          R '            Self::InspectingModel => "READING GGUF",' "            Self::InspectingModel => `"READING GGUF`",`n            Self::ScanningLibrary => `"SCANNING LIBRARY`","
+          R '    db: Database,' @'
               db: Database,
               model_store: ModelStore,
               library: Vec<ModelRecord>,
               scan_progress: Option<ScanProgress>,
               scan_cancel: Option<Arc<AtomicBool>>,
-              section: Section,
           '@
-
-          Replace-Exact @'
-              fn load(paths: AppPaths, db: Database) -> Result<Self> {
-                  let installation = db.latest_installation()?;
-                  let model = db.latest_model()?;
-                  let history = db.recent_benchmarks(20)?;
-                  Ok(Self {
-                      paths,
-                      db,
-                      section: Section::Overview,
-          '@ @'
-              fn load(paths: AppPaths, db: Database, model_store: ModelStore) -> Result<Self> {
+          R '    fn load(paths: AppPaths, db: Database) -> Result<Self> {' '    fn load(paths: AppPaths, db: Database, model_store: ModelStore) -> Result<Self> {'
+          R '        let installation = db.latest_installation()?;' @'
                   model_store.refresh_location_existence()?;
                   let library = model_store.list_model_records()?;
                   let installation = db.latest_installation()?;
-                  let model = db.latest_model()?;
-                  let history = db.recent_benchmarks(20)?;
-                  Ok(Self {
-                      paths,
+          '@
+          R '            db,' @'
                       db,
                       model_store,
                       library,
                       scan_progress: None,
                       scan_cancel: None,
-                      section: Section::Overview,
           '@
-
-          Replace-Exact @'
-                  let db = Database::open(paths.database.clone())?;
-                  let initial = UiState::load(paths, db)?;
-          '@ @'
-                  let db = Database::open(paths.database.clone())?;
+          R '        let initial = UiState::load(paths, db)?;' @'
                   let model_store = ModelStore::open(paths.database.clone())?;
                   let initial = UiState::load(paths, db, model_store)?;
           '@
 
-          Replace-Exact @'
-              let select_model = move |_| {
-                  if state.read().activity.is_busy() {
-                      return;
-                  }
-                  let Some(file) = FileDialog::new()
-                      .set_title("Select GGUF model")
-                      .add_filter("GGUF model", &["gguf"])
-                      .pick_file()
-                  else {
-                      return;
-                  };
-
-                  state.write().activity = Activity::InspectingModel;
-                  state.write().notice = None;
-                  let mut worker_state = state;
-                  thread::spawn(move || {
-                      let result = inspect_gguf(&file).and_then(|model| {
-                          let db = worker_state.read().db.clone();
-                          db.save_model(&model)?;
-                          Ok(model)
-                      });
-
-                      let mut current = worker_state.write();
-                      current.activity = Activity::Idle;
-                      match result {
-                          Ok(model) => {
-                              current.model = Some(model);
-                              current.notice = Some((true, "GGUF metadata inspected and persisted.".into()));
-                          }
-                          Err(error) => current.notice = Some((false, error.to_string())),
-                      }
-                  });
-              };
-          '@ @'
-              let select_model = move |_| {
-                  if state.read().activity.is_busy() {
-                      return;
-                  }
-                  let Some(file) = FileDialog::new()
-                      .set_title("Select GGUF model")
-                      .add_filter("GGUF model", &["gguf"])
-                      .pick_file()
-                  else {
-                      return;
-                  };
-
-                  state.write().activity = Activity::InspectingModel;
-                  state.write().notice = None;
-                  let store = state.read().model_store.clone();
-                  let mut worker_state = state;
-                  thread::spawn(move || {
-                      let result = manual_add_model(&store, &file).and_then(|model| {
-                          let library = store.list_model_records()?;
-                          Ok((model, library))
-                      });
-
-                      let mut current = worker_state.write();
-                      current.activity = Activity::Idle;
-                      match result {
-                          Ok((model, library)) => {
-                              current.library = library;
-                              current.model = Some(model);
-                              current.notice = Some((true, "GGUF metadata inspected and added to the model library.".into()));
-                          }
-                          Err(error) => current.notice = Some((false, error.to_string())),
-                      }
-                  });
-              };
-
+          $actions = @'
               let scan_library = move |_| {
-                  if state.read().activity.is_busy() {
-                      return;
-                  }
-                  let Some(folder) = FileDialog::new()
-                      .set_title("Select model library folder")
-                      .pick_folder()
-                  else {
-                      return;
-                  };
-
+                  if state.read().activity.is_busy() { return; }
+                  let Some(folder) = FileDialog::new().set_title("Select model library folder").pick_folder() else { return; };
                   let cancel = Arc::new(AtomicBool::new(false));
                   let store = state.read().model_store.clone();
                   {
@@ -228,17 +81,14 @@ jobs:
                       current.scan_cancel = Some(cancel.clone());
                       current.notice = None;
                   }
-
                   let mut worker_state = state;
                   thread::spawn(move || {
                       let result = scan_root(&store, &folder, &cancel, |progress| {
                           worker_state.write().scan_progress = Some(progress.clone());
-                      })
-                      .and_then(|report| {
+                      }).and_then(|report| {
                           let library = store.list_model_records()?;
                           Ok((report, library))
                       });
-
                       let mut current = worker_state.write();
                       current.activity = Activity::Idle;
                       current.scan_cancel = None;
@@ -246,10 +96,7 @@ jobs:
                           Ok((report, library)) => {
                               current.library = library;
                               current.scan_progress = Some(report.progress.clone());
-                              current.notice = Some((
-                                  report.progress.errors == 0 && !report.progress.cancelled,
-                                  report.summary_line(),
-                              ));
+                              current.notice = Some((report.progress.errors == 0 && !report.progress.cancelled, report.summary_line()));
                           }
                           Err(error) => current.notice = Some((false, error.to_string())),
                       }
@@ -263,16 +110,8 @@ jobs:
               };
 
               let add_library_model = move |_| {
-                  if state.read().activity.is_busy() {
-                      return;
-                  }
-                  let Some(file) = FileDialog::new()
-                      .set_title("Add GGUF to model library")
-                      .add_filter("GGUF model", &["gguf"])
-                      .pick_file()
-                  else {
-                      return;
-                  };
+                  if state.read().activity.is_busy() { return; }
+                  let Some(file) = FileDialog::new().set_title("Add GGUF to model library").add_filter("GGUF model", &["gguf"]).pick_file() else { return; };
                   let store = state.read().model_store.clone();
                   state.write().activity = Activity::InspectingModel;
                   state.write().notice = None;
@@ -294,103 +133,42 @@ jobs:
                       }
                   });
               };
-          '@
 
-          Replace-Exact @'
-              let section_content = match snapshot.section {
-                  Section::Overview => overview(
-          '@ @'
-              let section_content = match snapshot.section {
-                  Section::Overview => overview(
           '@
+          R '    let run_benchmark = move |_| {' ($actions + '    let run_benchmark = move |_| {')
 
-          Replace-Exact @'
-                  ),
-                  Section::Benchmark => benchmark_view(
-          '@ @'
-                  ),
-                  Section::Library => library_view(
-                      &snapshot,
-                      scan_library,
-                      cancel_library_scan,
-                      add_library_model,
-                  ),
+          R '        Section::Benchmark => benchmark_view(' @'
+                  Section::Library => library_view(&snapshot, scan_library, cancel_library_scan, add_library_model),
                   Section::Benchmark => benchmark_view(
           '@
 
-          Replace-Exact @'
-                          span { class: "nav-index", "01" }
-                          span { "Overview" }
-                      }
-                      button {
-                          class: nav_class(snapshot.section, Section::Benchmark),
-          '@ @'
-                          span { class: "nav-index", "01" }
-                          span { "Overview" }
-                      }
+          $libraryButton = @'
                       button {
                           class: nav_class(snapshot.section, Section::Library),
                           onclick: move |_| state.write().section = Section::Library,
                           span { class: "nav-index", "02" }
                           span { "Models" }
                       }
-                      button {
-                          class: nav_class(snapshot.section, Section::Benchmark),
           '@
+          $benchmarkAnchor = '                    button {' + "`n" + '                        class: nav_class(snapshot.section, Section::Benchmark),'
+          R $benchmarkAnchor ($libraryButton + $benchmarkAnchor)
 
-          Replace-Exact @'
-                          span { class: "nav-index", "02" }
-                          span { "Benchmark" }
-          '@ @'
-                          span { class: "nav-index", "03" }
-                          span { "Benchmark" }
-          '@
-          Replace-Exact @'
-                          span { class: "nav-index", "03" }
-                          span { "History" }
-          '@ @'
-                          span { class: "nav-index", "04" }
-                          span { "History" }
-          '@
-          Replace-Exact @'
-                          span { class: "nav-index", "04" }
-                          span { "Storage & state" }
-          '@ @'
-                          span { class: "nav-index", "05" }
-                          span { "Storage & state" }
-          '@
+          R '        Section::Overview => "OVERVIEW",' "        Section::Overview => `"OVERVIEW`",`n        Section::Library => `"MODEL LIBRARY`","
+          R '        Section::Overview => "overview",' "        Section::Overview => `"overview`",`n        Section::Library => `"models`","
 
-          Replace-Exact @'
-                  Section::Overview => "OVERVIEW",
-                  Section::Benchmark => "BENCHMARK LAB",
-          '@ @'
-                  Section::Overview => "OVERVIEW",
-                  Section::Library => "MODEL LIBRARY",
-                  Section::Benchmark => "BENCHMARK LAB",
-          '@
-          Replace-Exact @'
-                  Section::Overview => "overview",
-                  Section::Benchmark => "benchmark",
-          '@ @'
-                  Section::Overview => "overview",
-                  Section::Library => "models",
-                  Section::Benchmark => "benchmark",
-          '@
-
-          $libraryView = @'
+          $view = @'
           fn library_view(
               snapshot: &UiState,
               scan_library: impl FnMut(MouseEvent) + 'static,
               cancel_scan: impl FnMut(MouseEvent) + 'static,
               add_model: impl FnMut(MouseEvent) + 'static,
           ) -> Element {
-              let progress = snapshot.scan_progress.as_ref();
               rsx! {
                   section { class: "history-header",
                       div {
                           div { class: "eyebrow", "> CONTENT-IDENTIFIED GGUF LIBRARY" }
                           h2 { "MODELS, NOT FILENAMES." }
-                          p { "Scan arbitrary folders recursively or add one GGUF directly. Identity is content-based; moved, duplicate, missing, and unreadable files stay explicit." }
+                          p { "Scan folders recursively or add one GGUF. Identity is content-based; duplicates, moved files, missing paths and scan errors remain explicit." }
                       }
                       div { class: "hero-actions",
                           if matches!(snapshot.activity, Activity::ScanningLibrary) {
@@ -402,7 +180,7 @@ jobs:
                       }
                   }
 
-                  if let Some(progress) = progress {
+                  if let Some(progress) = snapshot.scan_progress.as_ref() {
                       section { class: "terminal-panel history-panel",
                           div { class: "terminal-titlebar",
                               span { "> SCAN EVIDENCE" }
@@ -410,9 +188,9 @@ jobs:
                           }
                           div { class: "terminal-body",
                               {terminal_line("visited", &progress.visited_entries.to_string())}
-                              {terminal_line("gguf candidates", &progress.gguf_candidates.to_string())}
-                              {terminal_line("full inspections", &progress.full_inspections.to_string())}
-                              {terminal_line("reused unchanged", &progress.reused_unchanged.to_string())}
+                              {terminal_line("gguf", &progress.gguf_candidates.to_string())}
+                              {terminal_line("inspected", &progress.full_inspections.to_string())}
+                              {terminal_line("reused", &progress.reused_unchanged.to_string())}
                               {terminal_line("errors", &progress.errors.to_string())}
                               if let Some(path) = progress.current_path.as_ref() {
                                   div { class: "terminal-cursor-line", span { class: "prompt-symbol", ">" } span { class: "truncate", title: path.display().to_string(), {path.display().to_string()} } }
@@ -427,7 +205,7 @@ jobs:
                           span { class: "terminal-state", "{snapshot.library.len()} IDENTITIES" }
                       }
                       if snapshot.library.is_empty() {
-                          {empty_state("NO MODELS INDEXED", "Scan a folder or add a GGUF. Invalid files remain errors instead of fake model records.")}
+                          {empty_state("NO MODELS INDEXED", "Scan a folder or add a GGUF. Invalid files remain errors rather than fake model records.")}
                       } else {
                           div { class: "table",
                               div { class: "table-row table-head",
@@ -438,7 +216,7 @@ jobs:
                               }
                               for record in &snapshot.library {
                                   div { class: "table-row",
-                                      span { class: "truncate", title: record.model.path.display().to_string(), {record.model.name.as_deref().unwrap_or_else(|| record.model.path.file_name().and_then(|value| value.to_str()).unwrap_or("Unnamed GGUF"))} }
+                                      span { class: "truncate", title: record.model.path.display().to_string(), {record.model.name.as_deref().unwrap_or("Unnamed GGUF")} }
                                       span { {record.model.architecture.as_deref().unwrap_or("Unknown")} }
                                       span { {human_bytes(record.model.file_size)} }
                                       span { class: if record.is_missing() { "status-value" } else { "status-value good" }, if record.is_missing() { "MISSING" } else { "PRESENT" } }
@@ -451,8 +229,7 @@ jobs:
           }
 
           '@
-          if (-not $s.Contains('fn history_view(')) { throw 'history_view insertion point not found' }
-          $s = $s.Replace('fn history_view(', $libraryView + 'fn history_view(')
+          R 'fn history_view(' ($view + 'fn history_view(')
 
           Set-Content -Path $path -Value $s -Encoding utf8
           cargo fmt --all
