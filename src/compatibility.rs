@@ -170,7 +170,10 @@ pub fn evaluate_compatibility(
         }
     }
 
-    if matches!(status, CompatibilityStatus::Unknown | CompatibilityStatus::Incompatible) {
+    if matches!(
+        status,
+        CompatibilityStatus::Unknown | CompatibilityStatus::Incompatible
+    ) {
         return result(model, installation, fingerprint, status, reasons);
     }
 
@@ -306,8 +309,7 @@ fn result(
 
 fn help_has_option(help: &str, expected: &str) -> bool {
     help.split_whitespace().any(|token| {
-        token
-            .trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'))
+        token.trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'))
             == expected
     })
 }
@@ -422,7 +424,10 @@ fn known_upstream_architecture(architecture: &str) -> bool {
 mod tests {
     use super::*;
     use crate::{gguf::MetadataValue, llama::ToolEvidence};
-    use std::{collections::{BTreeMap, BTreeSet}, path::PathBuf};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::PathBuf,
+    };
 
     fn model(architecture: Option<&str>) -> ModelInfo {
         ModelInfo {
@@ -472,7 +477,8 @@ mod tests {
 
     #[test]
     fn positive_text_model_is_compatible() {
-        let result = evaluate_compatibility(&model(Some("qwen35")), &installation("--model FILE"), None);
+        let result =
+            evaluate_compatibility(&model(Some("qwen35")), &installation("--model FILE"), None);
         assert_eq!(result.status, CompatibilityStatus::Compatible);
     }
 
@@ -484,17 +490,25 @@ mod tests {
             None,
         );
         assert_eq!(result.status, CompatibilityStatus::Unknown);
-        assert!(result.reasons.iter().any(|reason| reason.code == "architecture_unknown"));
+        assert!(
+            result
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "architecture_unknown")
+        );
     }
 
     #[test]
     fn required_projector_without_mmproj_capability_is_limited_when_missing() {
-        let result = evaluate_compatibility(&model(Some("qwen3vl")), &installation("--model FILE"), None);
+        let result =
+            evaluate_compatibility(&model(Some("qwen3vl")), &installation("--model FILE"), None);
         assert_eq!(result.status, CompatibilityStatus::Limited);
-        assert!(result
-            .reasons
-            .iter()
-            .any(|reason| reason.code == "projector_required_missing"));
+        assert!(
+            result
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "projector_required_missing")
+        );
     }
 
     #[test]

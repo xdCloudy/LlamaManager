@@ -1,7 +1,11 @@
 pub mod app;
 pub mod benchmark;
+pub mod compatibility;
 pub mod error;
 pub mod gguf;
 pub mod llama;
+pub mod model_library;
+pub mod model_store;
+pub mod multimodal;
 pub mod paths;
 pub mod persistence;

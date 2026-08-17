@@ -6,10 +6,7 @@ use crate::gguf::ModelInfo;
 
 pub const MULTIMODAL_REGISTRY_REVISION: &str = "llama.cpp-mtmd-2026-08-17";
 
-const PROJECTOR_TYPE_KEYS: &[&str] = &[
-    "clip.vision.projector_type",
-    "clip.audio.projector_type",
-];
+const PROJECTOR_TYPE_KEYS: &[&str] = &["clip.vision.projector_type", "clip.audio.projector_type"];
 
 const PROJECTOR_BOOLEAN_KEYS: &[&str] = &[
     "clip.has_vision_encoder",
@@ -115,7 +112,8 @@ pub fn projector_requirement(model: &ModelInfo) -> ProjectorRequirementEvidence 
     let mut reasons = Vec::new();
 
     if is_projector_gguf(model) {
-        reasons.push("the selected GGUF is itself projector/CLIP evidence, not a text model".into());
+        reasons
+            .push("the selected GGUF is itself projector/CLIP evidence, not a text model".into());
         return ProjectorRequirementEvidence {
             requirement: ProjectorRequirement::Unknown,
             modalities,
@@ -152,14 +150,15 @@ pub fn projector_requirement(model: &ModelInfo) -> ProjectorRequirementEvidence 
             }
         }
         Some(
-            "llama" | "llama4" | "qwen" | "qwen2" | "qwen2moe" | "qwen3" | "qwen3moe"
-            | "qwen3next" | "qwen35" | "qwen35moe" | "phi2" | "phi3" | "phimoe"
-            | "gemma" | "gemma2" | "deepseek" | "deepseek2" | "deepseek4" | "mamba"
-            | "mamba2" | "jamba" | "gpt2" | "gptj" | "gptneox" | "starcoder"
-            | "starcoder2" | "command-r" | "cohere2" | "cohere2moe" | "olmo" | "olmo2"
-            | "olmoe" | "bitnet" | "t5" | "t5encoder",
+            "llama" | "llama4" | "qwen" | "qwen2" | "qwen2moe" | "qwen3" | "qwen3moe" | "qwen3next"
+            | "qwen35" | "qwen35moe" | "phi2" | "phi3" | "phimoe" | "gemma" | "gemma2" | "deepseek"
+            | "deepseek2" | "deepseek4" | "mamba" | "mamba2" | "jamba" | "gpt2" | "gptj"
+            | "gptneox" | "starcoder" | "starcoder2" | "command-r" | "cohere2" | "cohere2moe"
+            | "olmo" | "olmo2" | "olmoe" | "bitnet" | "t5" | "t5encoder",
         ) => {
-            reasons.push("no external projector requirement is known for this architecture entry".into());
+            reasons.push(
+                "no external projector requirement is known for this architecture entry".into(),
+            );
             ProjectorRequirementEvidence {
                 requirement: ProjectorRequirement::NotRequired,
                 modalities,
@@ -233,7 +232,8 @@ pub fn evaluate_projector_pair(model: &ModelInfo, projector: &ProjectorInfo) -> 
     }
 
     if projector.modalities.is_empty() {
-        reasons.push("projector GGUF does not expose a recognized vision/audio encoder marker".into());
+        reasons
+            .push("projector GGUF does not expose a recognized vision/audio encoder marker".into());
         return ProjectorMatch {
             status: ProjectorMatchStatus::Unknown,
             reasons,
@@ -256,7 +256,9 @@ pub fn evaluate_projector_pair(model: &ModelInfo, projector: &ProjectorInfo) -> 
         };
     }
 
-    reasons.push("projector metadata supplies every modality required by the model registry entry".into());
+    reasons.push(
+        "projector metadata supplies every modality required by the model registry entry".into(),
+    );
     ProjectorMatch {
         status: ProjectorMatchStatus::Compatible,
         reasons,
