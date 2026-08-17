@@ -23,6 +23,7 @@ jobs:
         run: |
           $path = "src/app.rs"
           $s = Get-Content $path -Raw
+          Remove-Item Alias:R -Force -ErrorAction SilentlyContinue
           function R([string]$old, [string]$new) {
             if (-not $script:s.Contains($old)) { throw "missing patch anchor: $old" }
             $script:s = $script:s.Replace($old, $new)
