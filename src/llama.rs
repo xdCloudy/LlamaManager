@@ -77,6 +77,7 @@ pub fn inspect_installation(root: &Path) -> Result<LlamaInstallation> {
         let options = extract_cli_options(&bench_tool.help_output);
         if options.contains("--list-devices")
             && let Ok(output) = run_probe(&bench_tool.path, &["--list-devices"])
+            && output.status.success()
         {
             bench_tool.device_output = output_text(output);
         }
@@ -118,36 +119,54 @@ pub fn inspect_installation(root: &Path) -> Result<LlamaInstallation> {
 }
 
 fn discover_tools(root: &Path) -> BTreeMap<String, PathBuf> {
-    let wanted = ["llama-server", "llama-bench", "llama-fit-params"];
     let mut found = BTreeMap::new();
 
     for entry in WalkDir::new(root)
-        .max_depth(5)
         .follow_links(false)
+        .sort_by_file_name()
         .into_iter()
         .filter_map(std::result::Result::ok)
         .filter(|entry| entry.file_type().is_file())
     {
         let path = entry.path();
-        let stem = path.file_stem().and_then(|value| value.to_str());
-        let Some(stem) = stem else { continue };
-        let normalized = stem.to_ascii_lowercase();
-        if wanted.contains(&normalized.as_str()) {
-            found
-                .entry(normalized)
-                .or_insert_with(|| path.to_path_buf());
-        }
+        let Some(tool_name) = canonical_tool_name(path) else {
+            continue;
+        };
+        found
+            .entry(tool_name.to_string())
+            .or_insert_with(|| path.to_path_buf());
     }
 
     found
 }
 
+fn canonical_tool_name(path: &Path) -> Option<&'static str> {
+    let file_name = path.file_name()?.to_str()?.to_ascii_lowercase();
+    let normalized = if cfg!(windows) {
+        file_name.strip_suffix(".exe")?
+    } else {
+        if file_name.contains('.') {
+            return None;
+        }
+        file_name.as_str()
+    };
+
+    match normalized {
+        "llama-server" => Some("llama-server"),
+        "llama-bench" => Some("llama-bench"),
+        "llama-fit-params" => Some("llama-fit-params"),
+        _ => None,
+    }
+}
+
 fn inspect_tool(path: PathBuf) -> Result<ToolEvidence> {
     let sha256 = sha256_file(&path)?;
     let version_output = run_probe(&path, &["--version"])
+        .ok()
+        .filter(|output| output.status.success())
         .map(output_text)
         .unwrap_or_default();
-    let help_output = output_text(run_probe(&path, &["--help"])?);
+    let help_output = output_text(run_required_probe(&path, &["--help"])?);
 
     Ok(ToolEvidence {
         path,
@@ -160,6 +179,26 @@ fn inspect_tool(path: PathBuf) -> Result<ToolEvidence> {
 
 fn run_probe(path: &Path, args: &[&str]) -> std::io::Result<Output> {
     Command::new(path).args(args).output()
+}
+
+fn run_required_probe(path: &Path, args: &[&str]) -> Result<Output> {
+    let output = run_probe(path, args).map_err(|error| {
+        LlamaManagerError::State(format!(
+            "failed to execute {} {}: {error}",
+            path.display(),
+            args.join(" ")
+        ))
+    })?;
+
+    if !output.status.success() {
+        return Err(LlamaManagerError::ProcessFailed {
+            program: path.display().to_string(),
+            code: output.status.code(),
+            stderr: output_text(output),
+        });
+    }
+
+    Ok(output)
 }
 
 fn output_text(output: Output) -> String {
@@ -243,6 +282,25 @@ pub fn now_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{fs, process};
+
+    fn tool_filename(tool: &str) -> String {
+        if cfg!(windows) {
+            format!("{tool}.exe")
+        } else {
+            tool.to_string()
+        }
+    }
+
+    fn fixture_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "llamamanager-{name}-{}-{}",
+            process::id(),
+            now_ms()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
 
     #[test]
     fn extracts_long_and_short_options() {
@@ -259,5 +317,62 @@ mod tests {
     fn detects_backend_from_real_evidence_text_only() {
         assert_eq!(detect_backend("ggml_cuda init"), Some("CUDA".into()));
         assert_eq!(detect_backend("unknown custom backend"), None);
+    }
+
+    #[test]
+    fn rejects_build_sidecars_as_tool_candidates() {
+        assert_eq!(canonical_tool_name(Path::new("llama-server.pdb")), None);
+        assert_eq!(canonical_tool_name(Path::new("llama-server.lib")), None);
+        assert_eq!(canonical_tool_name(Path::new("llama-bench.exp")), None);
+        assert_eq!(canonical_tool_name(Path::new("llama-fit-params.obj")), None);
+
+        let executable = tool_filename("llama-server");
+        assert_eq!(
+            canonical_tool_name(Path::new(&executable)),
+            Some("llama-server")
+        );
+    }
+
+    #[test]
+    fn discovery_is_recursive_deterministic_and_ignores_sidecars() {
+        let root = fixture_root("tool-discovery");
+        let preferred_dir = root.join("a-build").join("bin").join("Release");
+        let deep_dir = root
+            .join("z-package")
+            .join("one")
+            .join("two")
+            .join("three")
+            .join("four")
+            .join("five")
+            .join("six");
+        fs::create_dir_all(&preferred_dir).unwrap();
+        fs::create_dir_all(&deep_dir).unwrap();
+
+        let preferred_server = preferred_dir.join(tool_filename("llama-server"));
+        let duplicate_server = deep_dir.join(tool_filename("llama-server"));
+        let deep_bench = deep_dir.join(tool_filename("llama-bench"));
+        fs::write(&preferred_server, b"fixture").unwrap();
+        fs::write(&duplicate_server, b"fixture").unwrap();
+        fs::write(&deep_bench, b"fixture").unwrap();
+        fs::write(preferred_dir.join("llama-server.pdb"), b"sidecar").unwrap();
+        fs::write(preferred_dir.join("llama-bench.lib"), b"sidecar").unwrap();
+
+        let discovered = discover_tools(&root);
+        assert_eq!(
+            discovered.get("llama-server").map(PathBuf::as_path),
+            Some(preferred_server.as_path())
+        );
+        assert_eq!(
+            discovered.get("llama-bench").map(PathBuf::as_path),
+            Some(deep_bench.as_path())
+        );
+        assert!(!discovered.values().any(|path| {
+            matches!(
+                path.extension().and_then(|extension| extension.to_str()),
+                Some("pdb" | "lib")
+            )
+        }));
+
+        fs::remove_dir_all(root).unwrap();
     }
 }
