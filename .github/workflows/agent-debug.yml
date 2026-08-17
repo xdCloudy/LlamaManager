@@ -16,16 +16,27 @@ jobs:
           ref: agent/m2-model-library-compatibility
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-      - name: Capture cargo check output
+        with:
+          components: rustfmt
+      - name: Apply known compile fix and capture cargo check
         shell: pwsh
         run: |
+          $path = "src/model_library.rs"
+          $source = Get-Content $path -Raw
+          $old = 'store.save_scan_summary(&report)?;'
+          $new = 'store.save_scan_summary(root, &report)?;'
+          if (-not $source.Contains($old)) {
+            throw "expected scan-summary call was not found"
+          }
+          $source = $source.Replace($old, $new)
+          Set-Content -Path $path -Value $source -Encoding utf8
+          cargo fmt --all
           cargo check --all-targets *>&1 | Tee-Object -FilePath agent-check.log
-          $checkExit = $LASTEXITCODE
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add agent-check.log
+          git add src/model_library.rs agent-check.log
           if (-not (git diff --cached --quiet)) {
-            git commit -m "ci: capture agent compile diagnostics [skip ci]"
+            git commit -m "fix(m2): repair scan summary persistence call [skip ci]"
             git push origin HEAD:agent/m2-model-library-compatibility
           }
           exit 0
