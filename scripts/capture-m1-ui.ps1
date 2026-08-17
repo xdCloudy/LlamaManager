@@ -96,7 +96,7 @@ function Capture-Window {
     }
 
     [LlamaManagerUiCaptureNative]::ShowWindow($Handle, 9) | Out-Null
-    if (-not [LlamaManagerUiCaptureNative]::MoveWindow($Handle, $workingArea.Left + 16, $workingArea.Top + 16, $Width, $Height, $true)) {
+    if (-not [LlamaManagerUiCaptureNative]::MoveWindow($Handle, $workingArea.Left, $workingArea.Top, $Width, $Height, $true)) {
         throw "MoveWindow failed with Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())."
     }
 
