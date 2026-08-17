@@ -1,0 +1,1 @@
+{"files":[{"prefix":"model_store","target":"src/model_store.rs"},{"prefix":"model_library","target":"src/model_library.rs"},{"prefix":"migration","target":"migrations/0002_model_library.sql"},{"prefix":"lib","target":"src/lib.rs"}]}
