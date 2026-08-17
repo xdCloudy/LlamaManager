@@ -64,7 +64,7 @@ fn build_metadata_fixture(version: u32) -> Vec<u8> {
     out.push(255);
 
     push_key_and_type(&mut out, "validation.i8", TYPE_I8);
-    out.push((-8_i8) as u8);
+    out.extend_from_slice(&(-8_i8).to_le_bytes());
 
     push_key_and_type(&mut out, "validation.u16", TYPE_U16);
     out.extend_from_slice(&65_530_u16.to_le_bytes());
@@ -100,7 +100,7 @@ fn build_metadata_fixture(version: u32) -> Vec<u8> {
     out.extend_from_slice(&(-9_000_000_000_i64).to_le_bytes());
 
     push_key_and_type(&mut out, "validation.f64", TYPE_F64);
-    out.extend_from_slice(&-42.5_f64.to_le_bytes());
+    out.extend_from_slice(&(-42.5_f64).to_le_bytes());
 
     push_key_and_type(&mut out, "validation.nested_array", TYPE_ARRAY);
     out.extend_from_slice(&TYPE_ARRAY.to_le_bytes());
