@@ -19,6 +19,7 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title("LlamaWave")
+        .with_window_icon(None)
         .with_inner_size(LogicalSize::new(1440.0, 900.0))
         .with_min_inner_size(LogicalSize::new(1100.0, 700.0));
 
