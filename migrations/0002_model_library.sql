@@ -25,6 +25,8 @@ CREATE INDEX IF NOT EXISTS idx_model_locations_model
     ON model_locations(model_id);
 CREATE INDEX IF NOT EXISTS idx_models_sha256
     ON models(sha256);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llama_installations_id
+    ON llama_installations(id);
 
 CREATE TABLE IF NOT EXISTS projectors (
     id TEXT PRIMARY KEY,
