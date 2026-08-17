@@ -1,0 +1,275 @@
+name: Finalize M2 Source
+
+on:
+  push:
+    branches: [agent/m2-finalize]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, '[m2-finalized]') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/m2-finalize
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Patch source
+        shell: pwsh
+        run: |
+          $py = @'
+          from pathlib import Path
+
+          app = Path("src/app.rs")
+          s = app.read_text(encoding="utf-8-sig")
+          def r(old, new):
+              global s
+              if old not in s:
+                  raise RuntimeError(f"missing app anchor: {old!r}")
+              s = s.replace(old, new, 1)
+
+          r("use std::{path::PathBuf, thread};", """use std::{
+              path::PathBuf,
+              sync::{atomic::{AtomicBool, Ordering}, Arc},
+              thread,
+          };""")
+          r("    llama::{LlamaInstallation, inspect_installation},", """    llama::{LlamaInstallation, inspect_installation},
+              model_library::{ScanProgress, manual_add_model, scan_root},
+              model_store::{ModelRecord, ModelStore},""")
+          r("    Overview,", "    Overview,\n    Library,")
+          r("    InspectingModel,", "    InspectingModel,\n    ScanningLibrary,")
+          r('            Self::InspectingModel => "READING GGUF",', '            Self::InspectingModel => "READING GGUF",\n            Self::ScanningLibrary => "SCANNING LIBRARY",')
+          r("    db: Database,", """    db: Database,
+              model_store: ModelStore,
+              library: Vec<ModelRecord>,
+              scan_progress: Option<ScanProgress>,
+              scan_cancel: Option<Arc<AtomicBool>>,""")
+          r("    fn load(paths: AppPaths, db: Database) -> Result<Self> {", "    fn load(paths: AppPaths, db: Database, model_store: ModelStore) -> Result<Self> {")
+          r("        let installation = db.latest_installation()?;", """        model_store.refresh_location_existence()?;
+              let library = model_store.list_model_records()?;
+              let installation = db.latest_installation()?;""")
+          r("            db,", """            db,
+              model_store,
+              library,
+              scan_progress: None,
+              scan_cancel: None,""")
+          r("        let initial = UiState::load(paths, db)?;", """        let model_store = ModelStore::open(paths.database.clone())?;
+              let initial = UiState::load(paths, db, model_store)?;""")
+
+          actions = r'''    let scan_library = move |_| {
+              if state.read().activity.is_busy() { return; }
+              let Some(folder) = FileDialog::new().set_title("Select model library folder").pick_folder() else { return; };
+              let cancel = Arc::new(AtomicBool::new(false));
+              let store = state.read().model_store.clone();
+              {
+                  let mut current = state.write();
+                  current.activity = Activity::ScanningLibrary;
+                  current.scan_progress = Some(ScanProgress::default());
+                  current.scan_cancel = Some(cancel.clone());
+                  current.notice = None;
+              }
+              let mut worker_state = state;
+              thread::spawn(move || {
+                  let result = scan_root(&store, &folder, &cancel, |progress| {
+                      worker_state.write().scan_progress = Some(progress.clone());
+                  }).and_then(|report| {
+                      let library = store.list_model_records()?;
+                      Ok((report, library))
+                  });
+                  let mut current = worker_state.write();
+                  current.activity = Activity::Idle;
+                  current.scan_cancel = None;
+                  match result {
+                      Ok((report, library)) => {
+                          current.library = library;
+                          current.scan_progress = Some(report.progress.clone());
+                          current.notice = Some((report.progress.errors == 0 && !report.progress.cancelled, report.summary_line()));
+                      }
+                      Err(error) => current.notice = Some((false, error.to_string())),
+                  }
+              });
+          };
+
+          let cancel_library_scan = move |_| {
+              if let Some(cancel) = state.read().scan_cancel.as_ref() {
+                  cancel.store(true, Ordering::SeqCst);
+              }
+          };
+
+          let add_library_model = move |_| {
+              if state.read().activity.is_busy() { return; }
+              let Some(file) = FileDialog::new().set_title("Add GGUF to model library").add_filter("GGUF model", &["gguf"]).pick_file() else { return; };
+              let store = state.read().model_store.clone();
+              state.write().activity = Activity::InspectingModel;
+              state.write().notice = None;
+              let mut worker_state = state;
+              thread::spawn(move || {
+                  let result = manual_add_model(&store, &file).and_then(|model| {
+                      let library = store.list_model_records()?;
+                      Ok((model, library))
+                  });
+                  let mut current = worker_state.write();
+                  current.activity = Activity::Idle;
+                  match result {
+                      Ok((model, library)) => {
+                          current.library = library;
+                          current.model = Some(model);
+                          current.notice = Some((true, "Model added to library and selected.".into()));
+                      }
+                      Err(error) => current.notice = Some((false, error.to_string())),
+                  }
+              });
+          };
+
+          '''
+          r("    let run_benchmark = move |_| {", actions + "    let run_benchmark = move |_| {")
+          r("        Section::Benchmark => benchmark_view(", """        Section::Library => library_view(&snapshot, scan_library, cancel_library_scan, add_library_model),
+              Section::Benchmark => benchmark_view(""")
+
+          nav_anchor = '''                    button {
+                          class: nav_class(snapshot.section, Section::Benchmark),'''
+          nav_button = '''                    button {
+                          class: nav_class(snapshot.section, Section::Library),
+                          onclick: move |_| state.write().section = Section::Library,
+                          span { class: "nav-index", "02" }
+                          span { "Models" }
+                      }
+          '''
+          r(nav_anchor, nav_button + nav_anchor)
+          r('        Section::Overview => "OVERVIEW",', '        Section::Overview => "OVERVIEW",\n        Section::Library => "MODEL LIBRARY",')
+          r('        Section::Overview => "overview",', '        Section::Overview => "overview",\n        Section::Library => "models",')
+
+          view = r'''fn library_view(
+              snapshot: &UiState,
+              scan_library: impl FnMut(MouseEvent) + 'static,
+              cancel_scan: impl FnMut(MouseEvent) + 'static,
+              add_model: impl FnMut(MouseEvent) + 'static,
+          ) -> Element {
+              rsx! {
+                  section { class: "history-header",
+                      div {
+                          div { class: "eyebrow", "> CONTENT-IDENTIFIED GGUF LIBRARY" }
+                          h2 { "MODELS, NOT FILENAMES." }
+                          p { "Scan folders recursively or add one GGUF. Identity is content-based; duplicates, moved files, missing paths and scan errors remain explicit." }
+                      }
+                      div { class: "hero-actions",
+                          if matches!(snapshot.activity, Activity::ScanningLibrary) {
+                              button { class: "button ghost", onclick: cancel_scan, "CANCEL SCAN" }
+                          } else {
+                              button { class: "button primary", onclick: scan_library, "SCAN FOLDER" }
+                              button { class: "button ghost", onclick: add_model, "ADD GGUF" }
+                          }
+                      }
+                  }
+                  if let Some(progress) = snapshot.scan_progress.as_ref() {
+                      section { class: "terminal-panel history-panel",
+                          div { class: "terminal-titlebar", span { "> SCAN EVIDENCE" } span { class: "terminal-state", if progress.cancelled { "CANCELLED" } else if matches!(snapshot.activity, Activity::ScanningLibrary) { "LIVE" } else { "LAST RUN" } } }
+                          div { class: "terminal-body",
+                              {terminal_line("visited", &progress.visited_entries.to_string())}
+                              {terminal_line("gguf", &progress.gguf_candidates.to_string())}
+                              {terminal_line("inspected", &progress.full_inspections.to_string())}
+                              {terminal_line("reused", &progress.reused_unchanged.to_string())}
+                              {terminal_line("errors", &progress.errors.to_string())}
+                              if let Some(path) = progress.current_path.as_ref() { div { class: "terminal-cursor-line", span { class: "prompt-symbol", ">" } span { class: "truncate", title: path.display().to_string(), {path.display().to_string()} } } }
+                          }
+                      }
+                  }
+                  section { class: "terminal-panel history-panel",
+                      div { class: "terminal-titlebar", span { "> MODEL LIBRARY / SQLITE" } span { class: "terminal-state", "{snapshot.library.len()} IDENTITIES" } }
+                      if snapshot.library.is_empty() {
+                          {empty_state("NO MODELS INDEXED", "Scan a folder or add a GGUF. Invalid files remain errors rather than fake model records.")}
+                      } else {
+                          div { class: "table",
+                              div { class: "table-row table-head", span { "MODEL" } span { "ARCH" } span { "SIZE" } span { "STATE" } }
+                              for record in &snapshot.library {
+                                  div { class: "table-row",
+                                      span { class: "truncate", title: record.model.path.display().to_string(), {record.model.name.as_deref().unwrap_or("Unnamed GGUF")} }
+                                      span { {record.model.architecture.as_deref().unwrap_or("Unknown")} }
+                                      span { {human_bytes(record.model.file_size)} }
+                                      span { class: if record.is_missing() { "status-value" } else { "status-value good" }, if record.is_missing() { "MISSING" } else { "PRESENT" } }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          '''
+          r("fn history_view(", view + "fn history_view(")
+          app.write_text(s, encoding="utf-8")
+
+          store = Path("src/model_store.rs")
+          t = store.read_text(encoding="utf-8-sig")
+          anchor = '''        let existing_path: Option<String> = transaction
+              .query_row(
+                  "SELECT path FROM models WHERE id = ?1",
+                  [&model.id],
+                  |row| row.get(0),
+              )
+              .optional()?;'''
+          if anchor not in t:
+              raise RuntimeError("missing model-store identity anchor")
+          replacement = '''        // The legacy models.path column is UNIQUE. If the bytes at a known path change,
+              // detach the old row's legacy path before inserting the new content identity. model_locations
+              // remains the authoritative path↔identity mapping and will be reassigned below.
+              let incoming_path = model.path.to_string_lossy().into_owned();
+              let conflicting_model_id: Option<String> = transaction
+                  .query_row(
+                      "SELECT id FROM models WHERE path = ?1 AND id <> ?2",
+                      params![incoming_path, model.id],
+                      |row| row.get(0),
+                  )
+                  .optional()?;
+              if let Some(conflicting_model_id) = conflicting_model_id {
+                  let detached_path = format!("detached://{conflicting_model_id}");
+                  transaction.execute(
+                      "UPDATE models SET path = ?2 WHERE id = ?1",
+                      params![conflicting_model_id, detached_path],
+                  )?;
+              }
+
+          ''' + anchor
+          t = t.replace(anchor, replacement, 1)
+
+          test_anchor = '''    #[test]
+              fn same_name_different_content_remains_distinct() {'''
+          if test_anchor not in t:
+              raise RuntimeError("missing model-store test anchor")
+          new_test = r'''    #[test]
+              fn same_path_changed_content_reassigns_location_without_losing_old_identity() {
+                  let temp = tempfile::tempdir().unwrap();
+                  let db_path = temp.path().join("db.sqlite");
+                  crate::persistence::Database::open(&db_path).unwrap();
+                  let store = ModelStore::open(&db_path).unwrap();
+                  let path = temp.path().join("same.gguf");
+                  let first = model("model-old", "a", &path);
+                  let second = model("model-new", "b", &path);
+                  store.save_model_with_location(&first, &fingerprint()).unwrap();
+                  store.save_model_with_location(&second, &fingerprint()).unwrap();
+                  let records = store.list_model_records().unwrap();
+                  assert_eq!(records.len(), 2);
+                  let old = records.iter().find(|record| record.model.id == "model-old").unwrap();
+                  let new = records.iter().find(|record| record.model.id == "model-new").unwrap();
+                  assert!(old.is_missing());
+                  assert!(!new.is_missing());
+                  assert_eq!(new.present_paths(), vec![path.as_path()]);
+              }
+
+          '''
+          t = t.replace(test_anchor, new_test + test_anchor, 1)
+          store.write_text(t, encoding="utf-8")
+          '@
+          $py | python -
+          cargo fmt --all
+          Remove-Item ".github/workflows/m2-finalize-patch.yml" -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "feat(m2): finalize model library UI and identity handling [m2-finalized]"
+          git push origin HEAD:agent/m2-finalize
