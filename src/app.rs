@@ -33,10 +33,10 @@ enum Activity {
 impl Activity {
     fn label(&self) -> &'static str {
         match self {
-            Self::Idle => "Ready",
-            Self::InspectingInstallation => "Inspecting llama.cpp",
-            Self::InspectingModel => "Inspecting GGUF",
-            Self::Benchmarking => "Benchmark running",
+            Self::Idle => "READY",
+            Self::InspectingInstallation => "SCANNING RUNTIME",
+            Self::InspectingModel => "READING GGUF",
+            Self::Benchmarking => "BENCHMARKING",
         }
     }
 
@@ -146,7 +146,7 @@ pub fn App() -> Element {
                     current.installation = Some(installation);
                     current.notice = Some((
                         true,
-                        "llama.cpp installation inspected from real binaries.".into(),
+                        "Runtime inspected from the selected llama.cpp binaries.".into(),
                     ));
                 }
                 Err(error) => current.notice = Some((false, error.to_string())),
@@ -234,7 +234,7 @@ pub fn App() -> Element {
                     current.latest_run = Some(run);
                     current.notice = Some((
                         true,
-                        "Benchmark completed with real llama-bench output.".into(),
+                        "Benchmark complete. Raw output and parsed evidence were retained.".into(),
                     ));
                 }
                 Err(error) => current.notice = Some((false, error.to_string())),
@@ -250,6 +250,8 @@ pub fn App() -> Element {
         && snapshot.model.is_some()
         && !snapshot.activity.is_busy();
 
+    let blocker = benchmark_blocker(&snapshot);
+
     let command_preview = match (&snapshot.installation, &snapshot.model) {
         (Some(installation), Some(model)) => {
             if let Some(bench) = installation.bench.as_ref() {
@@ -263,11 +265,16 @@ pub fn App() -> Element {
     };
 
     let section_content = match snapshot.section {
-        Section::Overview => overview(&snapshot),
+        Section::Overview => overview(
+            &snapshot,
+            move |_| state.write().section = Section::Benchmark,
+            move |_| state.write().section = Section::History,
+        ),
         Section::Benchmark => benchmark_view(
             &snapshot,
             command_preview,
             can_benchmark,
+            blocker,
             select_installation,
             select_model,
             run_benchmark,
@@ -278,44 +285,79 @@ pub fn App() -> Element {
 
     rsx! {
         style { dangerous_inner_html: APP_CSS }
+        div { class: "crt-overlay" }
         div { class: "app-shell",
             aside { class: "sidebar",
                 div { class: "brand",
-                    div { class: "brand-mark", "LM" }
-                    div {
-                        div { class: "brand-title", "LlamaManager" }
-                        div { class: "brand-subtitle", "LLAMA.CPP CONTROL PLANE" }
-                    }
+                    div { class: "brand-kicker", "LOCAL INFERENCE LAB" }
+                    div { class: "brand-title", "LLAMAWAVE" }
+                    div { class: "brand-line" }
                 }
 
                 nav { class: "nav",
                     div { class: "nav-label", "WORKSPACE" }
-                    button { class: nav_class(snapshot.section, Section::Overview), onclick: move |_| state.write().section = Section::Overview, "Overview" }
-                    button { class: nav_class(snapshot.section, Section::Benchmark), onclick: move |_| state.write().section = Section::Benchmark, "Benchmark" }
-                    button { class: nav_class(snapshot.section, Section::History), onclick: move |_| state.write().section = Section::History, "History" }
+                    button {
+                        class: nav_class(snapshot.section, Section::Overview),
+                        onclick: move |_| state.write().section = Section::Overview,
+                        span { class: "nav-index", "01" }
+                        span { "Overview" }
+                    }
+                    button {
+                        class: nav_class(snapshot.section, Section::Benchmark),
+                        onclick: move |_| state.write().section = Section::Benchmark,
+                        span { class: "nav-index", "02" }
+                        span { "Benchmark" }
+                    }
+                    button {
+                        class: nav_class(snapshot.section, Section::History),
+                        onclick: move |_| state.write().section = Section::History,
+                        span { class: "nav-index", "03" }
+                        span { "History" }
+                    }
                     div { class: "nav-label", "SYSTEM" }
-                    button { class: nav_class(snapshot.section, Section::System), onclick: move |_| state.write().section = Section::System, "Storage & state" }
+                    button {
+                        class: nav_class(snapshot.section, Section::System),
+                        onclick: move |_| state.write().section = Section::System,
+                        span { class: "nav-index", "04" }
+                        span { "Storage & state" }
+                    }
                 }
 
                 div { class: "sidebar-status",
-                    {status_row("llama.cpp", snapshot.installation.as_ref().map(|_| "DETECTED").unwrap_or("NOT SET"))}
-                    {status_row("Backend", snapshot.installation.as_ref().and_then(|item| item.backend.as_deref()).unwrap_or("UNKNOWN"))}
-                    {status_row("Model", snapshot.model.as_ref().map(|_| "READY").unwrap_or("NOT SET"))}
-                    {status_row("Activity", snapshot.activity.label())}
+                    div { class: "sidebar-status-title", "> SYSTEM STATUS" }
+                    {status_row("RUNTIME", snapshot.installation.as_ref().map(|_| "DETECTED").unwrap_or("NOT SET"))}
+                    {status_row("BACKEND", snapshot.installation.as_ref().and_then(|item| item.backend.as_deref()).unwrap_or("UNKNOWN"))}
+                    {status_row("MODEL", snapshot.model.as_ref().map(|_| "READY").unwrap_or("NOT SET"))}
                 }
             }
 
             main { class: "main",
                 header { class: "topbar",
-                    div {
+                    div { class: "page-heading",
+                        div { class: "page-kicker", "> LLAMAWAVE / {section_slug(snapshot.section)}" }
                         h1 { {section_title(snapshot.section)} }
-                        p { "Capability-driven benchmarking with reproducible evidence." }
                     }
-                    div { class: if snapshot.activity.is_busy() { "activity-badge busy" } else { "activity-badge" }, {snapshot.activity.label()} }
+                    div { class: "topbar-actions",
+                        if snapshot.section == Section::Overview {
+                            button {
+                                class: "topbar-link",
+                                onclick: move |_| state.write().section = Section::Benchmark,
+                                "OPEN BENCHMARK"
+                            }
+                        }
+                        div {
+                            class: if snapshot.activity.is_busy() { "activity-badge busy" } else { "activity-badge" },
+                            {snapshot.activity.label()}
+                        }
+                    }
                 }
 
                 if let Some((success, message)) = snapshot.notice.as_ref() {
-                    div { class: if *success { "notice success" } else { "notice error" }, "{message}" }
+                    div {
+                        class: if *success { "notice success" } else { "notice error" },
+                        span { class: "notice-prefix", if *success { "OK" } else { "ERR" } }
+                        span { "{message}" }
+                    }
                 }
 
                 div { class: "content",
@@ -329,12 +371,13 @@ pub fn App() -> Element {
 fn fatal_screen(message: &str) -> Element {
     rsx! {
         style { dangerous_inner_html: APP_CSS }
+        div { class: "crt-overlay" }
         div { class: "fatal",
             div { class: "fatal-card",
-                div { class: "eyebrow", "STARTUP FAILURE" }
-                h1 { "LlamaManager could not initialize" }
+                div { class: "fatal-code", "> BOOT FAILURE" }
+                h1 { "LLAMAWAVE COULD NOT INITIALIZE" }
                 p { "{message}" }
-                p { class: "muted", "No fallback database or fake success state was created." }
+                p { class: "muted", "No fallback database or fabricated success state was created." }
             }
         }
     }
@@ -350,18 +393,60 @@ fn nav_class(current: Section, item: Section) -> &'static str {
 
 fn section_title(section: Section) -> &'static str {
     match section {
-        Section::Overview => "Overview",
-        Section::Benchmark => "Real benchmark",
-        Section::History => "Benchmark history",
-        Section::System => "Storage & state",
+        Section::Overview => "OVERVIEW",
+        Section::Benchmark => "BENCHMARK LAB",
+        Section::History => "BENCHMARK HISTORY",
+        Section::System => "STORAGE & STATE",
+    }
+}
+
+fn section_slug(section: Section) -> &'static str {
+    match section {
+        Section::Overview => "overview",
+        Section::Benchmark => "benchmark",
+        Section::History => "history",
+        Section::System => "system",
     }
 }
 
 fn status_row(label: &str, value: &str) -> Element {
-    rsx! { div { class: "status-row", span { "{label}" } strong { "{value}" } } }
+    let class = if matches!(value, "DETECTED" | "READY") {
+        "status-value good"
+    } else {
+        "status-value"
+    };
+    rsx! {
+        div { class: "status-row",
+            span { "{label}" }
+            strong { class: "{class}", "{value}" }
+        }
+    }
 }
 
-fn overview(snapshot: &UiState) -> Element {
+fn benchmark_blocker(snapshot: &UiState) -> &'static str {
+    if snapshot.installation.is_none() {
+        "Select a llama.cpp installation to continue."
+    } else if snapshot
+        .installation
+        .as_ref()
+        .and_then(|item| item.bench.as_ref())
+        .is_none()
+    {
+        "The selected runtime does not contain llama-bench."
+    } else if snapshot.model.is_none() {
+        "Select a GGUF model to continue."
+    } else if snapshot.activity.is_busy() {
+        "Wait for the current operation to finish."
+    } else {
+        "Runtime and model are ready."
+    }
+}
+
+fn overview(
+    snapshot: &UiState,
+    open_benchmark: impl FnMut(MouseEvent) + 'static,
+    open_history: impl FnMut(MouseEvent) + 'static,
+) -> Element {
     let prompt = snapshot
         .latest_run
         .as_ref()
@@ -370,43 +455,169 @@ fn overview(snapshot: &UiState) -> Element {
         .latest_run
         .as_ref()
         .and_then(BenchmarkRun::decode_tps);
+
+    let runtime_ready = snapshot
+        .installation
+        .as_ref()
+        .and_then(|item| item.bench.as_ref())
+        .is_some();
+    let model_ready = snapshot.model.is_some();
+    let run_ready = runtime_ready && model_ready;
+    let runtime_state = if runtime_ready { "READY" } else { "REQUIRED" };
+    let model_state = if model_ready { "READY" } else { "REQUIRED" };
+    let run_state = if snapshot.latest_run.is_some() {
+        "MEASURED"
+    } else if run_ready {
+        "READY"
+    } else {
+        "LOCKED"
+    };
+
     rsx! {
-        section { class: "hero panel",
-            div { class: "eyebrow", "EVIDENCE FIRST" }
-            h2 { "Turn a local llama.cpp build and GGUF into measured facts." }
-            p { "LlamaManager inspects the binaries you actually selected, reads genuine GGUF metadata, executes llama-bench directly, and stores raw + parsed evidence." }
+        section { class: "hero",
+            div { class: "hero-copy",
+                div { class: "eyebrow", "> LOCAL PERFORMANCE WORKSTATION" }
+                h2 {
+                    span { "MEASURE" }
+                    span { class: "gradient-text", "THE MACHINE." }
+                }
+                p {
+                    "Inspect the binaries you actually run, read the GGUF you actually load, and benchmark the exact local stack without guessed metadata."
+                }
+                div { class: "hero-actions",
+                    button { class: "button primary", onclick: open_benchmark, span { "START BENCHMARK" } }
+                    button { class: "button ghost", onclick: open_history, "VIEW HISTORY" }
+                }
+                div { class: "hero-proof",
+                    span { "> LOCAL ONLY" }
+                    span { "> RAW OUTPUT RETAINED" }
+                    span { "> NO FAKE GREEN" }
+                }
+            }
+            div { class: "hero-art",
+                div { class: "sun" }
+                div { class: "horizon" }
+                div { class: "mountain mountain-a" }
+                div { class: "mountain mountain-b" }
+                div { class: "hero-orbit orbit-a" }
+                div { class: "hero-orbit orbit-b" }
+            }
+        }
+
+        section { class: "readiness",
+            {readiness_step("01", "RUNTIME", "Select llama.cpp", runtime_state, runtime_ready)}
+            div { class: "readiness-link" }
+            {readiness_step("02", "MODEL", "Inspect GGUF", model_state, model_ready)}
+            div { class: "readiness-link" }
+            {readiness_step("03", "MEASURE", "Run benchmark", run_state, snapshot.latest_run.is_some())}
         }
 
         div { class: "metric-grid",
-            {metric_card("PROMPT", format_metric(prompt, "tok/s"), "Latest real pp result")}
-            {metric_card("DECODE", format_metric(decode, "tok/s"), "Latest real tg result")}
-            {metric_card("CAPABILITIES", snapshot.installation.as_ref().map(|item| item.capabilities.len().to_string()).unwrap_or_else(|| "—".into()), "Discovered from --help")}
-            {metric_card("HISTORY", snapshot.history.len().to_string(), "Persisted benchmark runs")}
+            {metric_card("PROMPT", format_metric(prompt, "tok/s"), "Latest pp throughput", "cyan")}
+            {metric_card("DECODE", format_metric(decode, "tok/s"), "Latest tg throughput", "magenta")}
+            {metric_card(
+                "CAPABILITIES",
+                snapshot
+                    .installation
+                    .as_ref()
+                    .map(|item| item.capabilities.len().to_string())
+                    .unwrap_or_else(|| "—".into()),
+                "Discovered from --help",
+                "orange",
+            )}
+            {metric_card("RUNS", snapshot.history.len().to_string(), "Persisted evidence", "purple")}
         }
 
-        div { class: "two-col",
-            section { class: "panel",
-                {panel_heading("llama.cpp installation", "Binary evidence")}
+        div { class: "overview-grid",
+            section { class: "panel data-panel",
+                {panel_heading("RUNTIME", "LLAMA.CPP")}
                 if let Some(installation) = snapshot.installation.as_ref() {
-                    {property("Root", &installation.root_path.to_string_lossy())}
-                    {property("Backend", installation.backend.as_deref().unwrap_or("Unknown"))}
-                    {property("llama-server", installation.server.as_ref().map(|tool| tool.path.to_string_lossy()).as_deref().unwrap_or("Not found"))}
-                    {property("llama-bench", installation.bench.as_ref().map(|tool| tool.path.to_string_lossy()).as_deref().unwrap_or("Not found"))}
+                    {property("ROOT", &installation.root_path.to_string_lossy())}
+                    {property("BACKEND", installation.backend.as_deref().unwrap_or("Unknown"))}
+                    {property(
+                        "LLAMA-BENCH",
+                        installation
+                            .bench
+                            .as_ref()
+                            .map(|tool| tool.path.to_string_lossy())
+                            .as_deref()
+                            .unwrap_or("Not found"),
+                    )}
                 } else {
-                    {empty_state("No installation selected", "Open Benchmark and choose an arbitrary llama.cpp folder.")}
+                    {empty_state("RUNTIME NOT CONFIGURED", "Choose the llama.cpp build you actually use. LlamaWave will inspect its binaries instead of assuming capabilities.")}
                 }
             }
-            section { class: "panel",
-                {panel_heading("GGUF model", "Metadata evidence")}
+
+            section { class: "panel data-panel",
+                {panel_heading("MODEL", "GGUF")}
                 if let Some(model) = snapshot.model.as_ref() {
-                    {property("Name", model.name.as_deref().unwrap_or("Not declared"))}
-                    {property("Architecture", model.architecture.as_deref().unwrap_or("Not declared"))}
-                    {property("Context", &model.context_length.map(format_number).unwrap_or_else(|| "Not declared".into()))}
+                    {property("NAME", model.name.as_deref().unwrap_or("Not declared"))}
+                    {property("ARCH", model.architecture.as_deref().unwrap_or("Not declared"))}
+                    {property(
+                        "CONTEXT",
+                        &model
+                            .context_length
+                            .map(format_number)
+                            .unwrap_or_else(|| "Not declared".into()),
+                    )}
                     {property("SHA-256", &short_hash(&model.sha256))}
                 } else {
-                    {empty_state("No model selected", "Choose a GGUF and LlamaManager will parse its metadata instead of guessing from its filename.")}
+                    {empty_state("MODEL NOT CONFIGURED", "Choose a GGUF file and LlamaWave will read the file header instead of guessing from its filename.")}
                 }
             }
+
+            section { class: "terminal-panel overview-terminal",
+                div { class: "terminal-titlebar",
+                    span { "> SESSION / READINESS" }
+                    span { class: "terminal-state", if run_ready { "ARMED" } else { "WAITING" } }
+                }
+                div { class: "terminal-body",
+                    {terminal_line("runtime", runtime_state)}
+                    {terminal_line("model", model_state)}
+                    {terminal_line("benchmark", run_state)}
+                    div { class: "terminal-cursor-line",
+                        span { class: "prompt-symbol", ">" }
+                        span {
+                            if run_ready {
+                                "Stack ready. Open Benchmark Lab to measure."
+                            } else {
+                                "Complete the required inputs to unlock measurement."
+                            }
+                        }
+                        span { class: "cursor", "_" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn readiness_step(
+    number: &str,
+    label: &str,
+    detail: &str,
+    state: &str,
+    complete: bool,
+) -> Element {
+    rsx! {
+        div { class: if complete { "readiness-step complete" } else { "readiness-step" },
+            span { class: "readiness-number", "{number}" }
+            div {
+                strong { "{label}" }
+                span { "{detail}" }
+            }
+            span { class: "readiness-state", "{state}" }
+        }
+    }
+}
+
+fn terminal_line(label: &str, value: &str) -> Element {
+    rsx! {
+        div { class: "terminal-line",
+            span { class: "prompt-symbol", ">" }
+            span { class: "terminal-key", "{label}" }
+            span { class: "terminal-dots" }
+            strong { "{value}" }
         }
     }
 }
@@ -415,66 +626,127 @@ fn benchmark_view(
     snapshot: &UiState,
     command_preview: String,
     can_benchmark: bool,
+    blocker: &'static str,
     select_installation: impl FnMut(MouseEvent) + 'static,
     select_model: impl FnMut(MouseEvent) + 'static,
     run_benchmark: impl FnMut(MouseEvent) + 'static,
 ) -> Element {
-    rsx! {
-        div { class: "workflow-grid",
-            section { class: "panel step-panel",
-                div { class: "step-number", "01" }
-                {panel_heading("llama.cpp", "Inspect actual binaries")}
-                if let Some(installation) = snapshot.installation.as_ref() {
-                    div { class: "selected-path", {installation.root_path.display().to_string()} }
-                    div { class: "chip-row",
-                        if installation.server.is_some() { span { class: "chip ok", "llama-server" } }
-                        if installation.bench.is_some() { span { class: "chip ok", "llama-bench" } }
-                        if installation.fit_params.is_some() { span { class: "chip", "llama-fit-params" } }
-                        if let Some(backend) = installation.backend.as_deref() { span { class: "chip accent", "{backend}" } }
-                    }
-                } else {
-                    p { class: "muted", "Select any llama.cpp installation. Tool locations are discovered recursively; bin\\ is not assumed." }
-                }
-                button { class: "button secondary", disabled: snapshot.activity.is_busy(), onclick: select_installation, "Select installation" }
-            }
+    let runtime_ready = snapshot
+        .installation
+        .as_ref()
+        .and_then(|item| item.bench.as_ref())
+        .is_some();
+    let model_ready = snapshot.model.is_some();
 
-            section { class: "panel step-panel",
-                div { class: "step-number", "02" }
-                {panel_heading("GGUF", "Read real metadata")}
-                if let Some(model) = snapshot.model.as_ref() {
-                    div { class: "selected-path", {model.path.display().to_string()} }
-                    div { class: "chip-row",
-                        if let Some(architecture) = model.architecture.as_deref() { span { class: "chip accent", "{architecture}" } }
-                        span { class: "chip", "GGUF v{model.gguf_version}" }
-                        span { class: "chip", {human_bytes(model.file_size)} }
-                    }
-                } else {
-                    p { class: "muted", "Select a local GGUF. Architecture, context and other metadata come from the file header, not its name." }
-                }
-                button { class: "button secondary", disabled: snapshot.activity.is_busy(), onclick: select_model, "Select GGUF" }
+    rsx! {
+        section { class: "lab-header",
+            div {
+                div { class: "eyebrow", "> CONTROLLED EXPERIMENT" }
+                h2 { "BENCHMARK YOUR REAL STACK" }
+                p { "Three steps. Each input is inspected before execution, and the exact command remains visible before you run it." }
+            }
+            div { class: "lab-state",
+                span { "STAGE" }
+                strong { if can_benchmark { "03 / 03" } else if runtime_ready { "02 / 03" } else { "01 / 03" } }
             }
         }
 
-        section { class: "panel command-panel",
-            {panel_heading("Command preview", "Exactly what will run")}
-            code { class: "command", "{command_preview}" }
-            div { class: "command-actions",
-                button { class: "button primary", disabled: !can_benchmark, onclick: run_benchmark,
-                    if matches!(snapshot.activity, Activity::Benchmarking) { "Benchmarking…" } else { "Run real benchmark" }
+        div { class: "workflow-grid",
+            section { class: if runtime_ready { "panel step-panel complete" } else { "panel step-panel active" },
+                div { class: "step-head",
+                    span { class: "step-number", "01" }
+                    div {
+                        div { class: "eyebrow", "RUNTIME" }
+                        h2 { "SELECT LLAMA.CPP" }
+                    }
+                    span { class: "step-status", if runtime_ready { "READY" } else { "REQUIRED" } }
                 }
-                span { class: "muted small", "3 repetitions • llama-bench JSON when supported" }
+                if let Some(installation) = snapshot.installation.as_ref() {
+                    div { class: "selected-path", title: installation.root_path.display().to_string(), {installation.root_path.display().to_string()} }
+                    div { class: "chip-row",
+                        if installation.server.is_some() { span { class: "chip ok", "LLAMA-SERVER" } }
+                        if installation.bench.is_some() { span { class: "chip ok", "LLAMA-BENCH" } }
+                        if installation.fit_params.is_some() { span { class: "chip", "FIT-PARAMS" } }
+                        if let Some(backend) = installation.backend.as_deref() { span { class: "chip accent", "{backend}" } }
+                    }
+                } else {
+                    p { class: "step-copy", "Choose the directory containing the llama.cpp build you actually run. Tool locations are discovered recursively." }
+                }
+                button {
+                    class: "button outline",
+                    disabled: snapshot.activity.is_busy(),
+                    onclick: select_installation,
+                    span { if runtime_ready { "CHANGE RUNTIME" } else { "SELECT RUNTIME" } }
+                }
+            }
+
+            section { class: if model_ready { "panel step-panel complete" } else if runtime_ready { "panel step-panel active" } else { "panel step-panel" },
+                div { class: "step-head",
+                    span { class: "step-number", "02" }
+                    div {
+                        div { class: "eyebrow", "MODEL" }
+                        h2 { "SELECT GGUF" }
+                    }
+                    span { class: "step-status", if model_ready { "READY" } else { "REQUIRED" } }
+                }
+                if let Some(model) = snapshot.model.as_ref() {
+                    div { class: "selected-path", title: model.path.display().to_string(), {model.path.display().to_string()} }
+                    div { class: "chip-row",
+                        if let Some(architecture) = model.architecture.as_deref() { span { class: "chip accent", "{architecture}" } }
+                        span { class: "chip", "GGUF V{model.gguf_version}" }
+                        span { class: "chip", {human_bytes(model.file_size)} }
+                    }
+                } else {
+                    p { class: "step-copy", "Choose the GGUF you want to measure. Architecture and context come from its metadata, not its filename." }
+                }
+                button {
+                    class: "button outline",
+                    disabled: snapshot.activity.is_busy(),
+                    onclick: select_model,
+                    span { if model_ready { "CHANGE MODEL" } else { "SELECT GGUF" } }
+                }
+            }
+        }
+
+        section { class: if can_benchmark { "terminal-panel command-panel armed" } else { "terminal-panel command-panel" },
+            div { class: "terminal-titlebar",
+                span { "> EXECUTION PREVIEW" }
+                span { class: "terminal-state", if can_benchmark { "ARMED" } else { "BLOCKED" } }
+            }
+            div { class: "command-wrap",
+                div { class: "command-prefix", "$" }
+                code { class: "command", "{command_preview}" }
+            }
+            div { class: "command-actions",
+                button {
+                    class: "button primary",
+                    disabled: !can_benchmark,
+                    onclick: run_benchmark,
+                    span {
+                        if matches!(snapshot.activity, Activity::Benchmarking) {
+                            "BENCHMARKING..."
+                        } else {
+                            "RUN BENCHMARK"
+                        }
+                    }
+                }
+                div { class: if can_benchmark { "run-helper ready" } else { "run-helper" },
+                    span { class: "helper-dot" }
+                    span { "{blocker}" }
+                }
+                span { class: "run-meta", "3 REPS / RAW EVIDENCE RETAINED" }
             }
         }
 
         if let Some(run) = snapshot.latest_run.as_ref() {
-            section { class: "panel",
-                {panel_heading("Latest result", "Raw evidence retained")}
+            section { class: "panel results-panel",
+                {panel_heading("LATEST RESULT", "MEASURED")}
                 div { class: "result-grid",
                     for sample in &run.samples {
                         div { class: "result-card",
-                            div { class: "result-test", "{sample.test}" }
+                            div { class: "result-test", "> {sample.test}" }
                             div { class: "result-value", {format!("{:.2}", sample.avg_tokens_per_second)} }
-                            div { class: "result-unit", "tokens / second" }
+                            div { class: "result-unit", "TOKENS / SECOND" }
                             if let Some(stddev) = sample.stddev_tokens_per_second {
                                 div { class: "result-stddev", {format!("± {:.2}", stddev)} }
                             }
@@ -482,10 +754,12 @@ fn benchmark_view(
                     }
                 }
                 details { class: "evidence",
-                    summary { "Show exact invocation and raw output" }
-                    code { class: "command", {run.command_preview()} }
+                    summary { "SHOW EXACT INVOCATION + RAW OUTPUT" }
+                    code { class: "command evidence-command", {run.command_preview()} }
                     pre { "{run.stdout}" }
-                    if !run.stderr.trim().is_empty() { pre { class: "stderr", "{run.stderr}" } }
+                    if !run.stderr.trim().is_empty() {
+                        pre { class: "stderr", "{run.stderr}" }
+                    }
                 }
             }
         }
@@ -494,13 +768,33 @@ fn benchmark_view(
 
 fn history_view(history: &[BenchmarkHistoryItem]) -> Element {
     rsx! {
-        section { class: "panel",
-            {panel_heading("Stored runs", "SQLite-backed evidence")}
+        section { class: "history-header",
+            div {
+                div { class: "eyebrow", "> PERSISTED EVIDENCE" }
+                h2 { "MEASUREMENTS, NOT MEMORIES." }
+                p { "Every completed run remains available after restart so you can compare real local results over time." }
+            }
+            div { class: "history-count",
+                strong { "{history.len()}" }
+                span { "RUNS" }
+            }
+        }
+
+        section { class: "terminal-panel history-panel",
+            div { class: "terminal-titlebar",
+                span { "> BENCHMARK HISTORY / SQLITE" }
+                span { class: "terminal-state", "{history.len()} RECORDS" }
+            }
             if history.is_empty() {
-                {empty_state("No benchmark history yet", "Complete a real llama-bench run and it will appear here after restart.")}
+                {empty_state("NO RUNS RECORDED", "Complete a benchmark in the lab and its measured evidence will appear here after restart.")}
             } else {
                 div { class: "table",
-                    div { class: "table-row table-head", span { "Model" } span { "Backend" } span { "Prompt" } span { "Decode" } }
+                    div { class: "table-row table-head",
+                        span { "MODEL" }
+                        span { "BACKEND" }
+                        span { "PROMPT" }
+                        span { "DECODE" }
+                    }
                     for item in history {
                         div { class: "table-row",
                             span { class: "truncate", title: "{item.model_path}", {file_name(&item.model_path)} }
@@ -517,23 +811,34 @@ fn history_view(history: &[BenchmarkHistoryItem]) -> Element {
 
 fn system_view(snapshot: &UiState) -> Element {
     rsx! {
-        div { class: "two-col",
-            section { class: "panel",
-                {panel_heading("Application storage", "Portable or per-user")}
-                {property("Mode", &snapshot.paths.mode.to_string())}
-                {property("Root", &snapshot.paths.root.to_string_lossy())}
-                {property("Database", &snapshot.db.path().to_string_lossy())}
-                {property("Logs", &snapshot.paths.logs.to_string_lossy())}
-                {property("Exports", &snapshot.paths.exports.to_string_lossy())}
+        section { class: "history-header",
+            div {
+                div { class: "eyebrow", "> LOCAL STATE" }
+                h2 { "KNOW WHERE EVERYTHING LIVES." }
+                p { "Portable and per-user paths are shown explicitly. Nothing important should be hidden behind application magic." }
             }
-            section { class: "panel",
-                {panel_heading("Integrity policy", "No fake green")}
+        }
+
+        div { class: "two-col",
+            section { class: "panel data-panel",
+                {panel_heading("APPLICATION STORAGE", "PATHS")}
+                {property("MODE", &snapshot.paths.mode.to_string())}
+                {property("ROOT", &snapshot.paths.root.to_string_lossy())}
+                {property("DATABASE", &snapshot.db.path().to_string_lossy())}
+                {property("LOGS", &snapshot.paths.logs.to_string_lossy())}
+                {property("EXPORTS", &snapshot.paths.exports.to_string_lossy())}
+            }
+            section { class: "terminal-panel policy-panel",
+                div { class: "terminal-titlebar",
+                    span { "> INTEGRITY POLICY" }
+                    span { class: "terminal-state", "ENFORCED" }
+                }
                 ul { class: "policy-list",
-                    li { "Binary capabilities come from local --help evidence." }
-                    li { "GGUF metadata is parsed from the selected file." }
-                    li { "Non-zero llama-bench exits remain failures." }
-                    li { "Raw benchmark stdout/stderr is retained." }
-                    li { "No production in-memory database fallback." }
+                    li { span { "01" } "Binary capabilities come from local --help evidence." }
+                    li { span { "02" } "GGUF metadata is parsed from the selected file." }
+                    li { span { "03" } "Non-zero llama-bench exits remain failures." }
+                    li { span { "04" } "Raw benchmark stdout/stderr is retained." }
+                    li { span { "05" } "No production in-memory database fallback." }
                 }
             }
         }
@@ -541,19 +846,43 @@ fn system_view(snapshot: &UiState) -> Element {
 }
 
 fn panel_heading(title: &str, eyebrow: &str) -> Element {
-    rsx! { div { class: "panel-heading", div { class: "eyebrow", "{eyebrow}" } h2 { "{title}" } } }
+    rsx! {
+        div { class: "panel-heading",
+            div { class: "eyebrow", "> {eyebrow}" }
+            h2 { "{title}" }
+        }
+    }
 }
 
-fn metric_card(label: &str, value: String, detail: &str) -> Element {
-    rsx! { div { class: "metric-card", div { class: "metric-label", "{label}" } div { class: "metric-value", "{value}" } div { class: "metric-detail", "{detail}" } } }
+fn metric_card(label: &str, value: String, detail: &str, accent: &str) -> Element {
+    rsx! {
+        div { class: "metric-card {accent}",
+            div { class: "metric-label", "{label}" }
+            div { class: "metric-value", "{value}" }
+            div { class: "metric-detail", "{detail}" }
+        }
+    }
 }
 
 fn property(label: &str, value: &str) -> Element {
-    rsx! { div { class: "property", span { "{label}" } strong { title: "{value}", "{value}" } } }
+    rsx! {
+        div { class: "property",
+            span { "{label}" }
+            strong { title: "{value}", "{value}" }
+        }
+    }
 }
 
 fn empty_state(title: &str, detail: &str) -> Element {
-    rsx! { div { class: "empty", strong { "{title}" } p { "{detail}" } } }
+    rsx! {
+        div { class: "empty",
+            div { class: "empty-mark", "◇" }
+            div {
+                strong { "{title}" }
+                p { "{detail}" }
+            }
+        }
+    }
 }
 
 fn format_metric(value: Option<f64>, unit: &str) -> String {
