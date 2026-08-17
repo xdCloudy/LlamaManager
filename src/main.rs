@@ -50,11 +50,7 @@ fn rim_color(y: usize) -> [u8; 4] {
     if t < 0.48 {
         mix([255, 153, 0, 255], [255, 0, 255, 255], t / 0.48)
     } else {
-        mix(
-            [255, 0, 255, 255],
-            [0, 255, 255, 255],
-            (t - 0.48) / 0.52,
-        )
+        mix([255, 0, 255, 255], [0, 255, 255, 255], (t - 0.48) / 0.52)
     }
 }
 
@@ -62,11 +58,7 @@ fn sunset_color(t: f32) -> [u8; 4] {
     if t < 0.5 {
         mix([255, 230, 80, 255], [255, 95, 140, 255], t * 2.0)
     } else {
-        mix(
-            [255, 95, 140, 255],
-            [205, 0, 255, 255],
-            (t - 0.5) * 2.0,
-        )
+        mix([255, 95, 140, 255], [205, 0, 255, 255], (t - 0.5) * 2.0)
     }
 }
 
@@ -104,12 +96,8 @@ fn draw_wave(rgba: &mut [u8]) {
         let t = step as f32 / 96.0;
         let one_minus_t = 1.0 - t;
 
-        let x = one_minus_t * one_minus_t * 10.0
-            + 2.0 * one_minus_t * t * 27.0
-            + t * t * 40.0;
-        let y = one_minus_t * one_minus_t * 43.0
-            + 2.0 * one_minus_t * t * 43.0
-            + t * t * 34.0;
+        let x = one_minus_t * one_minus_t * 10.0 + 2.0 * one_minus_t * t * 27.0 + t * t * 40.0;
+        let y = one_minus_t * one_minus_t * 43.0 + 2.0 * one_minus_t * t * 43.0 + t * t * 34.0;
         let color = mix([255, 0, 255, 255], [80, 170, 255, 255], t);
         draw_neon_point(rgba, x, y, color);
     }
@@ -118,12 +106,8 @@ fn draw_wave(rgba: &mut [u8]) {
         let t = step as f32 / 72.0;
         let one_minus_t = 1.0 - t;
 
-        let x = one_minus_t * one_minus_t * 40.0
-            + 2.0 * one_minus_t * t * 51.0
-            + t * t * 46.0;
-        let y = one_minus_t * one_minus_t * 34.0
-            + 2.0 * one_minus_t * t * 31.0
-            + t * t * 40.0;
+        let x = one_minus_t * one_minus_t * 40.0 + 2.0 * one_minus_t * t * 51.0 + t * t * 46.0;
+        let y = one_minus_t * one_minus_t * 34.0 + 2.0 * one_minus_t * t * 31.0 + t * t * 40.0;
         draw_neon_point(rgba, x, y, [0, 245, 255, 255]);
     }
 
@@ -131,12 +115,8 @@ fn draw_wave(rgba: &mut [u8]) {
         let t = step as f32 / 72.0;
         let one_minus_t = 1.0 - t;
 
-        let x = one_minus_t * one_minus_t * 46.0
-            + 2.0 * one_minus_t * t * 40.0
-            + t * t * 52.0;
-        let y = one_minus_t * one_minus_t * 40.0
-            + 2.0 * one_minus_t * t * 37.0
-            + t * t * 44.0;
+        let x = one_minus_t * one_minus_t * 46.0 + 2.0 * one_minus_t * t * 40.0 + t * t * 52.0;
+        let y = one_minus_t * one_minus_t * 40.0 + 2.0 * one_minus_t * t * 37.0 + t * t * 44.0;
         draw_neon_point(rgba, x, y, [0, 245, 255, 255]);
     }
 }
@@ -189,8 +169,7 @@ fn mix(from: [u8; 4], to: [u8; 4], t: f32) -> [u8; 4] {
     let mut result = [0_u8; 4];
     for channel in 0..4 {
         result[channel] =
-            (from[channel] as f32 + (to[channel] as f32 - from[channel] as f32) * t).round()
-                as u8;
+            (from[channel] as f32 + (to[channel] as f32 - from[channel] as f32) * t).round() as u8;
     }
     result
 }
