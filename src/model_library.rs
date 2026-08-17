@@ -332,7 +332,7 @@ pub fn scan_root(
         started_at_unix_ms,
         finished_at_unix_ms: now_ms(),
     };
-    store.save_scan_summary(&report)?;
+    store.save_scan_summary(root, &report)?;
     on_progress(&report.progress);
     Ok(report)
 }
