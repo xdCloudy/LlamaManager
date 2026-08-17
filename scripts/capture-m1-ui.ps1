@@ -9,7 +9,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $IsWindows) {
+$isWindowsHost = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [System.Runtime.InteropServices.OSPlatform]::Windows
+)
+if (-not $isWindowsHost) {
     throw 'M1 UI capture requires an interactive Windows desktop.'
 }
 
