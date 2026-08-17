@@ -19,6 +19,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Reconstruct staged agent files
+        shell: pwsh
+        run: |
+          $manifestPath = ".agent_chunks\manifest.json"
+          if (Test-Path $manifestPath) {
+            $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+            foreach ($entry in $manifest.files) {
+              $encoded = ""
+              Get-ChildItem ".agent_chunks\$($entry.prefix).*" | Sort-Object Name | ForEach-Object {
+                $encoded += (Get-Content $_.FullName -Raw).Trim()
+              }
+              $bytes = [Convert]::FromBase64String($encoded)
+              $target = Join-Path $PWD $entry.target
+              New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
+              [IO.File]::WriteAllBytes($target, $bytes)
+            }
+            Remove-Item ".agent_chunks" -Recurse -Force
+          }
       - name: Format and commit
         shell: pwsh
         run: |
@@ -27,6 +45,6 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add --all
-            git commit -m "chore: rustfmt agent changes [agent-format]"
+            git commit -m "chore: reconstruct and rustfmt agent changes [agent-format]"
             git push origin HEAD:agent/m2-model-library-compatibility
           }
