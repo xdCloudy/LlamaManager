@@ -1,15 +1,14 @@
-name: Agent Rustfmt
+name: Agent M2 Validation
 
 on:
-  push:
-    branches: [agent/m2-model-library-compatibility]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
-  rustfmt:
-    if: ${{ !contains(github.event.head_commit.message, '[agent-format]') }}
+  reconstruct-validate:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,33 +17,41 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Reconstruct staged agent files
         shell: pwsh
         run: |
           $manifestPath = ".agent_chunks\manifest.json"
-          if (Test-Path $manifestPath) {
-            $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-            foreach ($entry in $manifest.files) {
-              $encoded = ""
-              Get-ChildItem ".agent_chunks\$($entry.prefix).*" | Sort-Object Name | ForEach-Object {
-                $encoded += (Get-Content $_.FullName -Raw).Trim()
-              }
-              $bytes = [Convert]::FromBase64String($encoded)
-              $target = Join-Path $PWD $entry.target
-              New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
-              [IO.File]::WriteAllBytes($target, $bytes)
-            }
-            Remove-Item ".agent_chunks" -Recurse -Force
+          if (-not (Test-Path $manifestPath)) {
+            throw "agent staging manifest is missing"
           }
-      - name: Format and commit
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          foreach ($entry in $manifest.files) {
+            $encoded = ""
+            Get-ChildItem ".agent_chunks\$($entry.prefix).*" | Sort-Object Name | ForEach-Object {
+              $encoded += (Get-Content $_.FullName -Raw).Trim()
+            }
+            $bytes = [Convert]::FromBase64String($encoded)
+            $target = Join-Path $PWD $entry.target
+            New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
+            [IO.File]::WriteAllBytes($target, $bytes)
+          }
+          Remove-Item ".agent_chunks" -Recurse -Force
+      - name: Format
+        run: cargo fmt --all
+      - name: Check
+        run: cargo check --all-targets
+      - name: Test
+        run: cargo test --all-targets
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Release build
+        run: cargo build --release
+      - name: Commit reconstructed source
         shell: pwsh
         run: |
-          cargo fmt --all
-          if (-not (git diff --quiet)) {
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add --all
-            git commit -m "chore: reconstruct and rustfmt agent changes [agent-format]"
-            git push origin HEAD:agent/m2-model-library-compatibility
-          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "feat(m2): reconstruct validated model-library source [agent-format]"
+          git push origin HEAD:agent/m2-model-library-compatibility
