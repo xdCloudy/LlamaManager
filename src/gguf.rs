@@ -13,8 +13,11 @@ use serde::{Deserialize, Serialize};
 
 const MAX_STRING_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_ARRAY_PREVIEW: usize = 32;
+const MAX_METADATA_ENTRIES: u64 = 1_000_000;
+const MAX_TENSORS: u64 = 10_000_000;
+const MAX_TENSOR_DIMS: u32 = 16;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", content = "value")]
 pub enum MetadataValue {
     UInt(u64),
@@ -70,8 +73,46 @@ pub struct ModelInfo {
     pub architecture: Option<String>,
     pub context_length: Option<u64>,
     pub quantization_version: Option<u64>,
+    #[serde(default)]
+    pub general_type: Option<String>,
+    #[serde(default)]
+    pub file_type: Option<u64>,
+    #[serde(default)]
+    pub parameter_count: Option<u64>,
+    #[serde(default)]
+    pub tensor_type_counts: BTreeMap<u32, u64>,
     pub metadata: BTreeMap<String, MetadataValue>,
     pub inspected_at_unix_ms: u128,
+}
+
+impl ModelInfo {
+    pub fn metadata_string(&self, key: &str) -> Option<&str> {
+        match self.metadata.get(key) {
+            Some(MetadataValue::String(value)) => Some(value.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn metadata_u64(&self, key: &str) -> Option<u64> {
+        match self.metadata.get(key) {
+            Some(MetadataValue::UInt(value)) => Some(*value),
+            Some(MetadataValue::Int(value)) if *value >= 0 => Some(*value as u64),
+            _ => None,
+        }
+    }
+
+    pub fn metadata_bool(&self, key: &str) -> Option<bool> {
+        match self.metadata.get(key) {
+            Some(MetadataValue::Bool(value)) => Some(*value),
+            Some(MetadataValue::UInt(value)) if *value <= 1 => Some(*value != 0),
+            Some(MetadataValue::Int(value)) if (0..=1).contains(value) => Some(*value != 0),
+            _ => None,
+        }
+    }
+
+    pub fn has_metadata_key(&self, key: &str) -> bool {
+        self.metadata.contains_key(key)
+    }
 }
 
 pub fn inspect_gguf(path: &Path) -> Result<ModelInfo> {
@@ -99,9 +140,14 @@ pub fn inspect_gguf(path: &Path) -> Result<ModelInfo> {
 
     let tensor_count = read_u64(&mut reader)?;
     let metadata_count = read_u64(&mut reader)?;
-    if metadata_count > 1_000_000 {
+    if metadata_count > MAX_METADATA_ENTRIES {
         return Err(LlamaManagerError::Gguf(format!(
             "metadata count {metadata_count} exceeds safety limit"
+        )));
+    }
+    if tensor_count > MAX_TENSORS {
+        return Err(LlamaManagerError::Gguf(format!(
+            "tensor count {tensor_count} exceeds safety limit"
         )));
     }
 
@@ -113,12 +159,16 @@ pub fn inspect_gguf(path: &Path) -> Result<ModelInfo> {
         metadata.insert(key, value);
     }
 
+    let (parameter_count, tensor_type_counts) = read_tensor_summary(&mut reader, tensor_count)?;
+
     let name = metadata_string(&metadata, "general.name");
     let architecture = metadata_string(&metadata, "general.architecture");
+    let general_type = metadata_string(&metadata, "general.type");
     let context_length = architecture
         .as_ref()
         .and_then(|arch| metadata_u64(&metadata, &format!("{arch}.context_length")));
     let quantization_version = metadata_u64(&metadata, "general.quantization_version");
+    let file_type = metadata_u64(&metadata, "general.file_type");
     let sha256 = sha256_file(path)?;
 
     Ok(ModelInfo {
@@ -133,9 +183,48 @@ pub fn inspect_gguf(path: &Path) -> Result<ModelInfo> {
         architecture,
         context_length,
         quantization_version,
+        general_type,
+        file_type,
+        parameter_count,
+        tensor_type_counts,
         metadata,
         inspected_at_unix_ms: now_ms(),
     })
+}
+
+fn read_tensor_summary<R: Read>(
+    reader: &mut R,
+    tensor_count: u64,
+) -> Result<(Option<u64>, BTreeMap<u32, u64>)> {
+    let mut parameter_count = Some(0_u64);
+    let mut tensor_type_counts = BTreeMap::new();
+
+    for _ in 0..tensor_count {
+        let _name = read_string(reader)?;
+        let dimensions = read_u32(reader)?;
+        if dimensions > MAX_TENSOR_DIMS {
+            return Err(LlamaManagerError::Gguf(format!(
+                "tensor dimension count {dimensions} exceeds safety limit"
+            )));
+        }
+
+        let mut elements = Some(1_u64);
+        for _ in 0..dimensions {
+            let dimension = read_u64(reader)?;
+            elements = elements.and_then(|current| current.checked_mul(dimension));
+        }
+
+        let tensor_type = read_u32(reader)?;
+        let _offset = read_u64(reader)?;
+        *tensor_type_counts.entry(tensor_type).or_insert(0) += 1;
+
+        parameter_count = match (parameter_count, elements) {
+            (Some(total), Some(count)) => total.checked_add(count),
+            _ => None,
+        };
+    }
+
+    Ok((parameter_count, tensor_type_counts))
 }
 
 fn metadata_string(map: &BTreeMap<String, MetadataValue>, key: &str) -> Option<String> {
@@ -287,5 +376,20 @@ mod tests {
             read_value(&mut cursor, ty).unwrap().display_compact(),
             "qwen35"
         );
+    }
+
+    #[test]
+    fn summarizes_tensor_descriptors_without_reading_tensor_data() {
+        let mut data = Vec::new();
+        push_string(&mut data, "blk.0.attn_q.weight");
+        data.extend_from_slice(&2_u32.to_le_bytes());
+        data.extend_from_slice(&4_u64.to_le_bytes());
+        data.extend_from_slice(&8_u64.to_le_bytes());
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0_u64.to_le_bytes());
+
+        let (parameters, types) = read_tensor_summary(&mut Cursor::new(data), 1).unwrap();
+        assert_eq!(parameters, Some(32));
+        assert_eq!(types.get(&12), Some(&1));
     }
 }
