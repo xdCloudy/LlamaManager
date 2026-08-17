@@ -221,10 +221,7 @@ fn inspects_v2_and_v3_metadata_from_contents_on_unicode_space_paths() {
             }) => {
                 assert_eq!(*element_type, TYPE_ARRAY);
                 assert_eq!(*len, 1);
-                assert_eq!(
-                    preview,
-                    &["array(type=8, len=2) [one, two]".to_string()]
-                );
+                assert_eq!(preview, &["array(type=8, len=2) [one, two]".to_string()]);
             }
             other => panic!("unexpected nested-array metadata value: {other:?}"),
         }
@@ -249,7 +246,10 @@ fn corrupt_and_truncated_inputs_remain_typed_failures() {
     write_fixture(&unsupported_version_path, &unsupported_version);
     let unsupported_version_error =
         inspect_gguf(&unsupported_version_path).expect_err("unsupported version should fail");
-    assert!(matches!(unsupported_version_error, LlamaManagerError::Gguf(_)));
+    assert!(matches!(
+        unsupported_version_error,
+        LlamaManagerError::Gguf(_)
+    ));
 
     let truncated_path = temp.path().join("truncated metadata.gguf");
     let mut truncated = Vec::new();
