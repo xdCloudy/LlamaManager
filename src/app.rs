@@ -592,13 +592,7 @@ fn overview(
     }
 }
 
-fn readiness_step(
-    number: &str,
-    label: &str,
-    detail: &str,
-    state: &str,
-    complete: bool,
-) -> Element {
+fn readiness_step(number: &str, label: &str, detail: &str, state: &str, complete: bool) -> Element {
     rsx! {
         div { class: if complete { "readiness-step complete" } else { "readiness-step" },
             span { class: "readiness-number", "{number}" }
