@@ -21,144 +21,159 @@ jobs:
       - name: Integrate model library UI
         shell: pwsh
         run: |
-          $path = "src/app.rs"
-          $s = Get-Content $path -Raw
-          Remove-Item Alias:R -Force -ErrorAction SilentlyContinue
-          function R([string]$old, [string]$new) {
-            if (-not $script:s.Contains($old)) { throw "missing patch anchor: $old" }
-            $script:s = $script:s.Replace($old, $new)
-          }
+          $py = @'
+          from pathlib import Path
 
-          R 'use std::{path::PathBuf, thread};' @'
-          use std::{
+          path = Path("src/app.rs")
+          s = path.read_text(encoding="utf-8-sig")
+
+          def r(old: str, new: str) -> None:
+              global s
+              if old not in s:
+                  raise RuntimeError(f"missing patch anchor: {old!r}")
+              s = s.replace(old, new, 1)
+
+          r("use std::{path::PathBuf, thread};", """use std::{
               path::PathBuf,
               sync::{atomic::{AtomicBool, Ordering}, Arc},
               thread,
-          };
-          '@
-          R '    llama::{LlamaInstallation, inspect_installation},' @'
-              llama::{LlamaInstallation, inspect_installation},
+          };""")
+          r("    llama::{LlamaInstallation, inspect_installation},", """    llama::{LlamaInstallation, inspect_installation},
               model_library::{ScanProgress, manual_add_model, scan_root},
-              model_store::{ModelRecord, ModelStore},
-          '@
-          R '    Overview,' "    Overview,`n    Library,"
-          R '    InspectingModel,' "    InspectingModel,`n    ScanningLibrary,"
-          R '            Self::InspectingModel => "READING GGUF",' "            Self::InspectingModel => `"READING GGUF`",`n            Self::ScanningLibrary => `"SCANNING LIBRARY`","
-          R '    db: Database,' @'
-              db: Database,
+              model_store::{ModelRecord, ModelStore},""")
+          r("    Overview,", "    Overview,\n    Library,")
+          r("    InspectingModel,", "    InspectingModel,\n    ScanningLibrary,")
+          r('            Self::InspectingModel => "READING GGUF",', '            Self::InspectingModel => "READING GGUF",\n            Self::ScanningLibrary => "SCANNING LIBRARY",')
+          r("    db: Database,", """    db: Database,
               model_store: ModelStore,
               library: Vec<ModelRecord>,
               scan_progress: Option<ScanProgress>,
-              scan_cancel: Option<Arc<AtomicBool>>,
-          '@
-          R '    fn load(paths: AppPaths, db: Database) -> Result<Self> {' '    fn load(paths: AppPaths, db: Database, model_store: ModelStore) -> Result<Self> {'
-          R '        let installation = db.latest_installation()?;' @'
-                  model_store.refresh_location_existence()?;
-                  let library = model_store.list_model_records()?;
-                  let installation = db.latest_installation()?;
-          '@
-          R '            db,' @'
-                      db,
-                      model_store,
-                      library,
-                      scan_progress: None,
-                      scan_cancel: None,
-          '@
-          R '        let initial = UiState::load(paths, db)?;' @'
-                  let model_store = ModelStore::open(paths.database.clone())?;
-                  let initial = UiState::load(paths, db, model_store)?;
-          '@
+              scan_cancel: Option<Arc<AtomicBool>>,""")
+          r("    fn load(paths: AppPaths, db: Database) -> Result<Self> {", "    fn load(paths: AppPaths, db: Database, model_store: ModelStore) -> Result<Self> {")
+          r("        let installation = db.latest_installation()?;", """        model_store.refresh_location_existence()?;
+              let library = model_store.list_model_records()?;
+              let installation = db.latest_installation()?;""")
+          r("            db,", """            db,
+              model_store,
+              library,
+              scan_progress: None,
+              scan_cancel: None,""")
+          r("        let initial = UiState::load(paths, db)?;", """        let model_store = ModelStore::open(paths.database.clone())?;
+              let initial = UiState::load(paths, db, model_store)?;""")
 
-          $actions = @'
-              let scan_library = move |_| {
-                  if state.read().activity.is_busy() { return; }
-                  let Some(folder) = FileDialog::new().set_title("Select model library folder").pick_folder() else { return; };
-                  let cancel = Arc::new(AtomicBool::new(false));
-                  let store = state.read().model_store.clone();
-                  {
-                      let mut current = state.write();
-                      current.activity = Activity::ScanningLibrary;
-                      current.scan_progress = Some(ScanProgress::default());
-                      current.scan_cancel = Some(cancel.clone());
-                      current.notice = None;
-                  }
-                  let mut worker_state = state;
-                  thread::spawn(move || {
-                      let result = scan_root(&store, &folder, &cancel, |progress| {
-                          worker_state.write().scan_progress = Some(progress.clone());
-                      }).and_then(|report| {
-                          let library = store.list_model_records()?;
-                          Ok((report, library))
-                      });
-                      let mut current = worker_state.write();
-                      current.activity = Activity::Idle;
-                      current.scan_cancel = None;
-                      match result {
-                          Ok((report, library)) => {
-                              current.library = library;
-                              current.scan_progress = Some(report.progress.clone());
-                              current.notice = Some((report.progress.errors == 0 && !report.progress.cancelled, report.summary_line()));
-                          }
-                          Err(error) => current.notice = Some((false, error.to_string())),
-                      }
+          actions = r'''    let scan_library = move |_| {
+              if state.read().activity.is_busy() {
+                  return;
+              }
+              let Some(folder) = FileDialog::new()
+                  .set_title("Select model library folder")
+                  .pick_folder()
+              else {
+                  return;
+              };
+
+              let cancel = Arc::new(AtomicBool::new(false));
+              let store = state.read().model_store.clone();
+              {
+                  let mut current = state.write();
+                  current.activity = Activity::ScanningLibrary;
+                  current.scan_progress = Some(ScanProgress::default());
+                  current.scan_cancel = Some(cancel.clone());
+                  current.notice = None;
+              }
+
+              let mut worker_state = state;
+              thread::spawn(move || {
+                  let result = scan_root(&store, &folder, &cancel, |progress| {
+                      worker_state.write().scan_progress = Some(progress.clone());
+                  })
+                  .and_then(|report| {
+                      let library = store.list_model_records()?;
+                      Ok((report, library))
                   });
-              };
 
-              let cancel_library_scan = move |_| {
-                  if let Some(cancel) = state.read().scan_cancel.as_ref() {
-                      cancel.store(true, Ordering::SeqCst);
-                  }
-              };
-
-              let add_library_model = move |_| {
-                  if state.read().activity.is_busy() { return; }
-                  let Some(file) = FileDialog::new().set_title("Add GGUF to model library").add_filter("GGUF model", &["gguf"]).pick_file() else { return; };
-                  let store = state.read().model_store.clone();
-                  state.write().activity = Activity::InspectingModel;
-                  state.write().notice = None;
-                  let mut worker_state = state;
-                  thread::spawn(move || {
-                      let result = manual_add_model(&store, &file).and_then(|model| {
-                          let library = store.list_model_records()?;
-                          Ok((model, library))
-                      });
-                      let mut current = worker_state.write();
-                      current.activity = Activity::Idle;
-                      match result {
-                          Ok((model, library)) => {
-                              current.library = library;
-                              current.model = Some(model);
-                              current.notice = Some((true, "Model added to library and selected.".into()));
-                          }
-                          Err(error) => current.notice = Some((false, error.to_string())),
+                  let mut current = worker_state.write();
+                  current.activity = Activity::Idle;
+                  current.scan_cancel = None;
+                  match result {
+                      Ok((report, library)) => {
+                          current.library = library;
+                          current.scan_progress = Some(report.progress.clone());
+                          current.notice = Some((
+                              report.progress.errors == 0 && !report.progress.cancelled,
+                              report.summary_line(),
+                          ));
                       }
-                  });
+                      Err(error) => current.notice = Some((false, error.to_string())),
+                  }
+              });
+          };
+
+          let cancel_library_scan = move |_| {
+              if let Some(cancel) = state.read().scan_cancel.as_ref() {
+                  cancel.store(true, Ordering::SeqCst);
+              }
+          };
+
+          let add_library_model = move |_| {
+              if state.read().activity.is_busy() {
+                  return;
+              }
+              let Some(file) = FileDialog::new()
+                  .set_title("Add GGUF to model library")
+                  .add_filter("GGUF model", &["gguf"])
+                  .pick_file()
+              else {
+                  return;
               };
 
-          '@
-          R '    let run_benchmark = move |_| {' ($actions + '    let run_benchmark = move |_| {')
+              let store = state.read().model_store.clone();
+              state.write().activity = Activity::InspectingModel;
+              state.write().notice = None;
+              let mut worker_state = state;
+              thread::spawn(move || {
+                  let result = manual_add_model(&store, &file).and_then(|model| {
+                      let library = store.list_model_records()?;
+                      Ok((model, library))
+                  });
+                  let mut current = worker_state.write();
+                  current.activity = Activity::Idle;
+                  match result {
+                      Ok((model, library)) => {
+                          current.library = library;
+                          current.model = Some(model);
+                          current.notice = Some((true, "Model added to library and selected.".into()));
+                      }
+                      Err(error) => current.notice = Some((false, error.to_string())),
+                  }
+              });
+          };
 
-          R '        Section::Benchmark => benchmark_view(' @'
-                  Section::Library => library_view(&snapshot, scan_library, cancel_library_scan, add_library_model),
-                  Section::Benchmark => benchmark_view(
-          '@
+          '''
+          r("    let run_benchmark = move |_| {", actions + "    let run_benchmark = move |_| {")
 
-          $libraryButton = @'
-                      button {
+          r("        Section::Benchmark => benchmark_view(", """        Section::Library => library_view(
+              &snapshot,
+              scan_library,
+              cancel_library_scan,
+              add_library_model,
+          ),
+              Section::Benchmark => benchmark_view(""")
+
+          nav_anchor = '''                    button {
+                          class: nav_class(snapshot.section, Section::Benchmark),'''
+          nav_button = '''                    button {
                           class: nav_class(snapshot.section, Section::Library),
                           onclick: move |_| state.write().section = Section::Library,
                           span { class: "nav-index", "02" }
                           span { "Models" }
                       }
-          '@
-          $benchmarkAnchor = '                    button {' + "`n" + '                        class: nav_class(snapshot.section, Section::Benchmark),'
-          R $benchmarkAnchor ($libraryButton + $benchmarkAnchor)
+          '''
+          r(nav_anchor, nav_button + nav_anchor)
+          r('        Section::Overview => "OVERVIEW",', '        Section::Overview => "OVERVIEW",\n        Section::Library => "MODEL LIBRARY",')
+          r('        Section::Overview => "overview",', '        Section::Overview => "overview",\n        Section::Library => "models",')
 
-          R '        Section::Overview => "OVERVIEW",' "        Section::Overview => `"OVERVIEW`",`n        Section::Library => `"MODEL LIBRARY`","
-          R '        Section::Overview => "overview",' "        Section::Overview => `"overview`",`n        Section::Library => `"models`","
-
-          $view = @'
-          fn library_view(
+          view = r'''fn library_view(
               snapshot: &UiState,
               scan_library: impl FnMut(MouseEvent) + 'static,
               cancel_scan: impl FnMut(MouseEvent) + 'static,
@@ -194,7 +209,10 @@ jobs:
                               {terminal_line("reused", &progress.reused_unchanged.to_string())}
                               {terminal_line("errors", &progress.errors.to_string())}
                               if let Some(path) = progress.current_path.as_ref() {
-                                  div { class: "terminal-cursor-line", span { class: "prompt-symbol", ">" } span { class: "truncate", title: path.display().to_string(), {path.display().to_string()} } }
+                                  div { class: "terminal-cursor-line",
+                                      span { class: "prompt-symbol", ">" }
+                                      span { class: "truncate", title: path.display().to_string(), {path.display().to_string()} }
+                                  }
                               }
                           }
                       }
@@ -229,10 +247,12 @@ jobs:
               }
           }
 
+          '''
+          r("fn history_view(", view + "fn history_view(")
+          path.write_text(s, encoding="utf-8")
           '@
-          R 'fn history_view(' ($view + 'fn history_view(')
+          $py | python -
 
-          Set-Content -Path $path -Value $s -Encoding utf8
           cargo fmt --all
           cargo check --all-targets
           cargo test --all-targets
