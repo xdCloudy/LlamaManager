@@ -160,8 +160,7 @@ fn validates_real_a_b_a_switch_timing_persistence_comparison_and_failure_recover
 
     let database_path = test_temp.path().join("router-switch-benchmark.sqlite");
     Database::open(&database_path).expect("initialize base persistence schema");
-    let model_store =
-        ModelStore::open(&database_path).expect("initialize M2 model library schema");
+    let model_store = ModelStore::open(&database_path).expect("initialize M2 model library schema");
     let scan = scan_root(&model_store, &model_root, &AtomicBool::new(false), |_| {})
         .expect("scan real switch benchmark models into M2 library");
     assert_eq!(scan.progress.errors, 0, "real model scan must be clean");
