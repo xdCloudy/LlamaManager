@@ -5,7 +5,9 @@ pub enum ServerConsoleControlError {
     #[error("Windows console control is only available on Windows")]
     UnsupportedPlatform,
 
-    #[error("the LlamaWave process is already attached to a console; refusing to broadcast Ctrl+C outside the managed server console")]
+    #[error(
+        "the LlamaWave process is already attached to a console; refusing to broadcast Ctrl+C outside the managed server console"
+    )]
     CallerAlreadyAttached,
 
     #[error("failed to attach to managed server console for pid {pid}: {message}")]
@@ -99,8 +101,6 @@ fn platform_request_graceful_console_interrupt(pid: u32) -> Result<(), ServerCon
         });
     }
 
-    // Give the target console control dispatcher time to invoke llama-server's
-    // registered handler before detaching this GUI process from that console.
     thread::sleep(Duration::from_millis(75));
     Ok(())
 }
@@ -143,9 +143,7 @@ fn platform_hide_managed_console_window(pid: u32) -> Result<(), ServerConsoleCon
 }
 
 #[cfg(not(windows))]
-fn platform_request_graceful_console_interrupt(
-    _pid: u32,
-) -> Result<(), ServerConsoleControlError> {
+fn platform_request_graceful_console_interrupt(_pid: u32) -> Result<(), ServerConsoleControlError> {
     Err(ServerConsoleControlError::UnsupportedPlatform)
 }
 
