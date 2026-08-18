@@ -743,6 +743,18 @@ pub fn ServerLifecycleView() -> Element {
         })
         .unwrap_or_default();
     visible_logs.reverse();
+    let log_summary = snapshot
+        .logs
+        .as_ref()
+        .map(|logs| {
+            format!(
+                "{} entries shown · {} bytes retained · {} evicted",
+                visible_logs.len(),
+                logs.retained_bytes,
+                logs.evicted_entries
+            )
+        })
+        .unwrap_or_else(|| "No managed log capture yet.".into());
 
     rsx! {
         style { dangerous_inner_html: SERVER_UI_CSS }
@@ -975,16 +987,7 @@ pub fn ServerLifecycleView() -> Element {
                 }
                 div { class: "sv-panel-body",
                     div { class: "sv-log-toolbar",
-                        div { class: "sv-muted",
-                            if let Some(logs) = snapshot.logs.as_ref() {
-                                {format!(
-                                    "{} entries shown · {} bytes retained · {} evicted",
-                                    visible_logs.len(), logs.retained_bytes, logs.evicted_entries
-                                )}
-                            } else {
-                                "No managed log capture yet.".to_string()
-                            }
-                        }
+                        div { class: "sv-muted", "{log_summary}" }
                         if let Some(path) = snapshot.log_path.as_ref() {
                             div { class: "sv-muted", "{path.display()}" }
                         }
