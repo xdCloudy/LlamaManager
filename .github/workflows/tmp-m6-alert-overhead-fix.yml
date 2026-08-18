@@ -1,0 +1,132 @@
+name: Temporary M6 Alert Overhead Fix
+
+on:
+  push:
+    branches:
+      - agent/m6-alerts-overhead
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/m6-alerts-overhead
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply robustness fixes
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old in text:
+                  return text.replace(old, new, 1)
+              if new in text:
+                  return text
+              raise SystemExit(f"expected patch target not found: {label}")
+
+          alerts_path = Path("src/telemetry_alerts.rs")
+          alerts = alerts_path.read_text(encoding="utf-8")
+          alerts = replace_once(
+              alerts,
+              '''struct PendingWindow {
+              started_at_unix_ms: u64,
+              samples: VecDeque<AlertEvidenceSample>,
+          }''',
+              '''struct PendingWindow {
+              started_at_unix_ms: u64,
+              observed_live_samples: usize,
+              samples: VecDeque<AlertEvidenceSample>,
+          }''',
+              "PendingWindow observed sample count",
+          )
+          alerts = replace_once(
+              alerts,
+              '''        Self {
+                      started_at_unix_ms: timestamp_unix_ms,
+                      samples,
+                  }''',
+              '''        Self {
+                      started_at_unix_ms: timestamp_unix_ms,
+                      observed_live_samples: 1,
+                      samples,
+                  }''',
+              "PendingWindow initialization",
+          )
+          alerts = replace_once(
+              alerts,
+              '''    fn push(&mut self, timestamp_unix_ms: u64, value: f64, capacity: usize) {
+                  self.samples.push_back(AlertEvidenceSample {''',
+              '''    fn push(&mut self, timestamp_unix_ms: u64, value: f64, capacity: usize) {
+                  self.observed_live_samples = self.observed_live_samples.saturating_add(1);
+                  self.samples.push_back(AlertEvidenceSample {''',
+              "PendingWindow push count",
+          )
+          alerts = replace_once(
+              alerts,
+              '''    fn sample_count(&self) -> usize {
+                  self.samples.len()
+              }''',
+              '''    fn sample_count(&self) -> usize {
+                  self.observed_live_samples
+              }''',
+              "PendingWindow sample_count",
+          )
+
+          test_name = "fn evidence_capacity_does_not_change_trigger_sample_count()"
+          if test_name not in alerts:
+              marker = '''    #[test]
+              fn stale_unavailable_and_error_samples_cannot_fire_live_alerts() {'''
+              if marker not in alerts:
+                  raise SystemExit("test insertion marker not found")
+              test = '''    #[test]
+              fn evidence_capacity_does_not_change_trigger_sample_count() {
+                  let key = key();
+                  let mut engine = AlertEngine::with_capacities(vec![rule()], 16, 2).unwrap();
+
+                  engine.observe(&key, &live(1_000, 81.0)).unwrap();
+                  engine.observe(&key, &live(2_000, 82.0)).unwrap();
+                  let evaluation = engine.observe(&key, &live(3_000, 83.0)).unwrap().remove(0);
+
+                  assert_eq!(evaluation.state, AlertPresentationState::Active);
+                  let event = evaluation.transition.unwrap();
+                  assert_eq!(event.evidence.samples.len(), 2);
+                  assert_eq!(event.evidence.window_started_at_unix_ms, 1_000);
+              }
+
+          '''
+              alerts = alerts.replace(marker, test + marker, 1)
+          alerts_path.write_text(alerts, encoding="utf-8")
+
+          overhead_path = Path("src/telemetry_overhead.rs")
+          overhead = overhead_path.read_text(encoding="utf-8")
+          overhead = overhead.replace("    latest: ProcessResourceSample,\n", "")
+          overhead = overhead.replace("            latest: start,\n", "")
+          overhead = overhead.replace("        self.latest = resources;\n", "")
+          overhead_path.write_text(overhead, encoding="utf-8")
+
+          docs_path = Path("docs/12_TELEMETRY_ALERTS_AND_OVERHEAD.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          docs = docs.replace(
+              "Poll latency measures the actual CPU/RAM + NVIDIA NVML telemetry polling work. The real validation uses a one-second polling cadence.",
+              "Poll latency measures the actual CPU/RAM + NVIDIA NVML provider work plus telemetry history insertion, alert evaluation, and chart projection. The real validation uses a one-second polling cadence.",
+          )
+          docs_path.write_text(docs, encoding="utf-8")
+          '@ | python -
+          cargo fmt --all
+      - name: Commit formatter and robustness output
+        shell: pwsh
+        run: |
+          if (git status --porcelain) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/telemetry_alerts.rs src/telemetry_overhead.rs tests/real_telemetry_overhead.rs docs/12_TELEMETRY_ALERTS_AND_OVERHEAD.md src/lib.rs
+            git commit -m "fix(telemetry): harden alert evidence and format M6.5"
+            git push origin HEAD:agent/m6-alerts-overhead
+          }
