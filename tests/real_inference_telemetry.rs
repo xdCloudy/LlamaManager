@@ -76,7 +76,9 @@ fn stream_completion(
     let mut buffer = [0_u8; 4096];
 
     loop {
-        let read = stream.read(&mut buffer).expect("read streaming completion response");
+        let read = stream
+            .read(&mut buffer)
+            .expect("read streaming completion response");
         if read == 0 {
             break;
         }
@@ -100,8 +102,7 @@ fn stream_completion(
                 status_code.is_some_and(|status| (200..=299).contains(&status)),
                 "streaming completion returned non-success status: {status_line}"
             );
-            let body_start = header_end + 4;
-            body_pending.push_str(&String::from_utf8_lossy(&received[body_start..]));
+            body_pending.push_str(&String::from_utf8_lossy(&received[header_end + 4..]));
             received.clear();
             headers_done = true;
         } else {
@@ -110,9 +111,8 @@ fn stream_completion(
         }
 
         while let Some(newline) = body_pending.find('\n') {
-            let mut line = body_pending[..newline].to_owned();
+            let line = body_pending[..newline].trim().to_owned();
             body_pending.drain(..=newline);
-            line = line.trim().to_owned();
             let Some(data_position) = line.find("data: ") else {
                 continue;
             };
@@ -148,14 +148,13 @@ fn stream_completion(
         }
     }
 
-    let request_latency = started.elapsed();
     StreamEvidence {
         status_code: status_code.expect("streaming response headers must be observed"),
         ttft_ms: first_token_elapsed
             .expect("streaming response must expose a first generated token")
             .as_secs_f64()
             * 1_000.0,
-        request_latency_ms: request_latency.as_secs_f64() * 1_000.0,
+        request_latency_ms: started.elapsed().as_secs_f64() * 1_000.0,
         event_count,
         final_event: final_event.expect("streaming response must expose a final timings event"),
     }
@@ -220,7 +219,8 @@ fn validates_real_streaming_inference_telemetry() {
             .expect("real llama-server must become ready before telemetry request");
     }
 
-    let request_body = r#"{"prompt":"Count: one two three","n_predict":4,"temperature":0,"stream":true}"#;
+    let request_body =
+        r#"{"prompt":"Count: one two three","n_predict":4,"temperature":0,"stream":true}"#;
     let stream = stream_completion(&endpoint, request_body, Duration::from_secs(20));
     assert!((200..=299).contains(&stream.status_code));
     assert!(stream.event_count >= 2);
@@ -243,29 +243,47 @@ fn validates_real_streaming_inference_telemetry() {
 
     assert_eq!(snapshot.identity.request_id, "real-streaming-1");
     assert_eq!(snapshot.identity.server_pid, Some(identity.pid));
-    assert!(snapshot.prompt_tps.live_value().is_some_and(|value| *value > 0.0));
-    assert!(snapshot.decode_tps.live_value().is_some_and(|value| *value >= 0.0));
-    assert!(snapshot.ttft_ms.live_value().is_some_and(|value| *value >= 0.0));
+    assert!(
+        snapshot
+            .prompt_tps
+            .live_value()
+            .is_some_and(|value| *value > 0.0)
+    );
+    assert!(
+        snapshot
+            .decode_tps
+            .live_value()
+            .is_some_and(|value| *value >= 0.0)
+    );
+    assert!(
+        snapshot
+            .ttft_ms
+            .live_value()
+            .is_some_and(|value| *value >= 0.0)
+    );
     assert!(
         snapshot
             .request_latency_ms
             .live_value()
             .is_some_and(|value| *value >= stream.ttft_ms)
     );
-    assert!(snapshot.context_tokens.live_value().is_some_and(|value| *value > 0));
+    assert!(
+        snapshot
+            .context_tokens
+            .live_value()
+            .is_some_and(|value| *value > 0)
+    );
 
-    // This pinned server is launched without speculative decoding. MTP fields must remain
-    // unavailable rather than becoming zero-valued performance claims.
     assert!(matches!(
-        snapshot.mtp_generated_tokens.state,
+        &snapshot.mtp_generated_tokens.state,
         TelemetryState::Unavailable { .. }
     ));
     assert!(matches!(
-        snapshot.mtp_accepted_tokens.state,
+        &snapshot.mtp_accepted_tokens.state,
         TelemetryState::Unavailable { .. }
     ));
     assert!(matches!(
-        snapshot.mtp_acceptance_rate.state,
+        &snapshot.mtp_acceptance_rate.state,
         TelemetryState::Unavailable { .. }
     ));
 
