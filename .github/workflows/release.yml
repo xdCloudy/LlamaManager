@@ -17,12 +17,64 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $failed = $false
+          Get-ChildItem -Path . -Filter '*.ps1' -File -Recurse | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Error "PowerShell syntax errors in $($_.FullName): $($errors -join '; ')" -ErrorAction Continue
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check all targets
+        run: cargo check --all-targets
+
+      - name: Tests
+        run: cargo test --all-targets
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
       - name: Build release
         run: cargo build --release
+
+      - name: Desktop process smoke test
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "target\release\llamamanager.exe").Path
+          $process = Start-Process -FilePath $exe -PassThru
+          try {
+            Start-Sleep -Seconds 8
+            if ($process.HasExited) {
+              throw "LlamaManager exited during the desktop smoke window with code $($process.ExitCode)."
+            }
+            Write-Host "LlamaManager remained alive for the 8-second desktop smoke window (PID $($process.Id))."
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
 
       - name: Assemble portable bundle
         shell: pwsh
@@ -39,6 +91,7 @@ jobs:
         with:
           name: LlamaManager-windows-x64
           path: dist/LlamaManager-windows-x64.zip
+          if-no-files-found: error
 
       - name: Publish GitHub release asset
         if: startsWith(github.ref, 'refs/tags/v')
