@@ -2,6 +2,72 @@
 
 This log records verified implementation state, not roadmap aspiration.
 
+## 2026-08-18 — M4 C5 managed llama-server lifecycle closure
+
+### Goal
+
+Promote Milestone 4 only after the complete managed `llama-server` path had implementation, strict automation, real Windows runtime evidence, rendered lifecycle/error-state validation, and deterministic timeout/force-kill recovery evidence.
+
+### Changed
+
+- Closed #31 after capability-backed executable+argv command construction was implemented and verified.
+- Closed #32 after Windows process supervision and Job Object cleanup were implemented and verified.
+- Closed #33 after real health + minimal `/completion` inference readiness and actionable port checks were implemented and verified.
+- Closed #34 after PR #123 (`a1700e89f913102f1fb513905cb0a5034e77c945`) added bounded stdout/stderr capture, retained lifecycle evidence, redacted export, high-volume fixtures and real Windows runtime evidence.
+- Closed #35 after PR #124 (`6797875ea3805b4001bf7c378d0907c005daa9c9`) added the rendered SERVER LAB workflow and interactive Windows lifecycle validation completed.
+- Merged PR #125 (`2f6d822e948b025e673f59775541b9ca5961716d`) so normal llama.cpp stderr diagnostics are classified by content rather than treated as errors.
+- Merged PR #126 (`c25cda85c95fc96e897ecfa42997345199943d6e`) so visible log labels render INFO/WARN/ERR/FATAL from presentation severity rather than stderr stream identity.
+- Closed #36 after the full real lifecycle/failure/recovery matrix was exercised, including timeout, crash, bad-GGUF, force-kill and no-leak verification.
+
+### Interactive Windows verification
+
+The repository owner exercised the release SERVER LAB against the real `D:\llamacpp\bin\llama-server.exe` and a real GGUF model on `127.0.0.1:8080`.
+
+Verified:
+
+- exact managed command preview and API-key redaction;
+- start → real health + HTTP 200 `/completion` → `Ready`;
+- graceful stop and restart → `Ready` without stale ownership;
+- occupied-port state represented as unknown/unowned rather than fake-managed;
+- external process termination detected as `Crashed` with retained exit/log evidence;
+- deliberately invalid GGUF produced a real failed-start/crash with retained load errors;
+- normal llama.cpp stderr startup/inference/timing output displays as `INFO`, while real failures display as `ERR`;
+- force-kill requires a second confirmation step;
+- narrow and normal/wide layouts remained usable through lifecycle and error states.
+
+### Timeout / force-kill matrix
+
+A real managed llama-server was suspended before readiness. LlamaWave remained truthful: after about 31.34 seconds it reported a readiness timeout, lifecycle `Failed`, ownership `MANAGED`, and retained logs instead of claiming success or stopped state.
+
+The real server still handled Ctrl+C cooperatively, so a deterministic Windows wrapper fixture enabled inherited ignore-Ctrl+C semantics while launching the real llama-server child inside the managed Job Object. The child reached real readiness and minimal inference. `STOP GRACEFULLY` then exercised the five-second grace-period-expiry branch: the UI remained `Ready` + `MANAGED`, stated that the process was still owned and NOT stopped, and armed `CONFIRM FORCE KILL`.
+
+After confirmation, Job Object termination removed the managed tree and the final listener check returned `Port8080Listening=False`.
+
+### CI
+
+PR #126 CI run `32111119407` passed:
+
+```text
+PowerShell syntax                                      PASS
+cargo fmt --all -- --check                            PASS
+cargo check --all-targets                             PASS
+cargo test --all-targets                              PASS
+cargo clippy --all-targets --all-features -D warnings PASS
+cargo build --release                                 PASS
+desktop process smoke                                 PASS
+portable bundle assembly/upload                       PASS
+```
+
+Permanent Real Windows Runtime Validation run `32103995058` also passed on the M4 implementation path with pinned llama.cpp `b10472`, published GGUFs, spaces/Unicode paths, real server readiness and minimal inference evidence.
+
+### Result
+
+Issues #31–#36 are closed with implementation/runtime evidence. `docs/evidence/M4_SERVER_LIFECYCLE_2026-08-18.md` records the closure evidence. M4 satisfies the applicable G1–G10 gates and is ready for #37 C5 promotion.
+
+The recurring managed-console auto-hide `ERROR_INVALID_HANDLE` warning observed during interactive runs is retained as non-blocking presentation polish: it did not affect process ownership, readiness, logging, shutdown or cleanup truth.
+
+---
+
 ## 2026-08-18 — M3 C5 models.ini runtime closure
 
 ### Goal
