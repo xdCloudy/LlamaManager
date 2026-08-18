@@ -44,7 +44,9 @@ fn free_loopback_port() -> u16 {
 }
 
 fn normalized_path(path: &Path) -> String {
-    path.to_string_lossy().replace('/', "\\").to_ascii_lowercase()
+    path.to_string_lossy()
+        .replace('/', "\\")
+        .to_ascii_lowercase()
 }
 
 fn model_id_for_path(registry: &RouterRegistry, path: &Path) -> String {
@@ -173,7 +175,11 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
             }
             Ok(registry) => panic!(
                 "real router registry did not expose two models before timeout: {:?}",
-                registry.models.iter().map(|model| &model.id).collect::<Vec<_>>()
+                registry
+                    .models
+                    .iter()
+                    .map(|model| &model.id)
+                    .collect::<Vec<_>>()
             ),
             Err(error) => panic!("real router discovery failed before operations: {error}"),
         }
@@ -189,7 +195,13 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
     let cancellation = RouterOperationCancellation::new();
 
     let reload = controller
-        .reload_registry(&installation, &endpoint, Some(&store), timeout, &cancellation)
+        .reload_registry(
+            &installation,
+            &endpoint,
+            Some(&store),
+            timeout,
+            &cancellation,
+        )
         .expect("real GET /models?reload=1 must reconcile");
     assert_eq!(reload.kind, RouterOperationKind::ReloadRegistry);
     assert_eq!(reload.http_statuses, vec![200]);
@@ -281,7 +293,10 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
             &cancelled,
         )
         .expect_err("pre-cancelled real operation must not mutate router state");
-    assert!(matches!(cancellation_error, RouterOperationError::Cancelled));
+    assert!(matches!(
+        cancellation_error,
+        RouterOperationError::Cancelled
+    ));
     assert!(matches!(
         controller.state(),
         RouterOperationState::Cancelled(_)
@@ -323,7 +338,10 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
     )
     .unwrap();
 
-    child.0.kill().expect("stop real router after operation validation");
+    child
+        .0
+        .kill()
+        .expect("stop real router after operation validation");
     let status = child.0.wait().expect("wait for stopped real router");
     assert!(
         !status.success(),
