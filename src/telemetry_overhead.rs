@@ -176,6 +176,7 @@ pub struct TelemetryOverheadRecorder {
     cadence_ms: u64,
     budget: OverheadBudget,
     start: ProcessResourceSample,
+    last: ProcessResourceSample,
     peak_private_bytes: u64,
     peak_working_set_bytes: u64,
     polls: Vec<PollTimingSample>,
@@ -200,6 +201,7 @@ impl TelemetryOverheadRecorder {
             cadence_ms,
             budget: budget.validate()?,
             start,
+            last: start,
             peak_private_bytes: start.private_bytes,
             peak_working_set_bytes: start.working_set_bytes,
             polls: Vec::new(),
@@ -211,7 +213,7 @@ impl TelemetryOverheadRecorder {
         timing: PollTimingSample,
         resources: ProcessResourceSample,
     ) -> Result<(), OverheadError> {
-        validate_resource_progression(self.start, resources)?;
+        validate_resource_progression(self.last, resources)?;
         if !timing.duration_ms.is_finite() || timing.duration_ms < 0.0 {
             return Err(OverheadError::InvalidBudget(
                 "poll duration must be finite and non-negative".to_owned(),
@@ -219,6 +221,7 @@ impl TelemetryOverheadRecorder {
         }
         self.peak_private_bytes = self.peak_private_bytes.max(resources.private_bytes);
         self.peak_working_set_bytes = self.peak_working_set_bytes.max(resources.working_set_bytes);
+        self.last = resources;
         self.polls.push(timing);
         Ok(())
     }
@@ -227,7 +230,7 @@ impl TelemetryOverheadRecorder {
         mut self,
         end: ProcessResourceSample,
     ) -> Result<TelemetryOverheadMeasurement, OverheadError> {
-        validate_resource_progression(self.start, end)?;
+        validate_resource_progression(self.last, end)?;
         if self.polls.is_empty() {
             return Err(OverheadError::NoPollSamples);
         }
@@ -689,6 +692,78 @@ mod tests {
             Err(OverheadError::CpuCounterMovedBackwards {
                 start: 100,
                 end: 99
+            })
+        );
+    }
+
+    #[test]
+    fn intermediate_resource_regressions_are_rejected() {
+        let start = sample(1_000, 100, 1_000, 2_000);
+        let mut recorder = TelemetryOverheadRecorder::new(
+            OverheadPhase::Idle,
+            Duration::from_secs(1),
+            OverheadBudget::default(),
+            start,
+        )
+        .unwrap();
+        recorder
+            .record_poll(
+                PollTimingSample {
+                    started_at_unix_ms: 2_000,
+                    duration_ms: 1.0,
+                },
+                sample(2_000, 200, 1_000, 2_000),
+            )
+            .unwrap();
+
+        assert_eq!(
+            recorder.record_poll(
+                PollTimingSample {
+                    started_at_unix_ms: 2_100,
+                    duration_ms: 1.0,
+                },
+                sample(1_500, 250, 1_000, 2_000),
+            ),
+            Err(OverheadError::ClockMovedBackwards {
+                start: 2_000,
+                end: 1_500
+            })
+        );
+        assert_eq!(
+            recorder.record_poll(
+                PollTimingSample {
+                    started_at_unix_ms: 2_100,
+                    duration_ms: 1.0,
+                },
+                sample(2_100, 150, 1_000, 2_000),
+            ),
+            Err(OverheadError::CpuCounterMovedBackwards {
+                start: 200,
+                end: 150
+            })
+        );
+
+        let mut finish_recorder = TelemetryOverheadRecorder::new(
+            OverheadPhase::Idle,
+            Duration::from_secs(1),
+            OverheadBudget::default(),
+            start,
+        )
+        .unwrap();
+        finish_recorder
+            .record_poll(
+                PollTimingSample {
+                    started_at_unix_ms: 2_000,
+                    duration_ms: 1.0,
+                },
+                sample(2_000, 200, 1_000, 2_000),
+            )
+            .unwrap();
+        assert_eq!(
+            finish_recorder.finish(sample(1_500, 250, 1_000, 2_000)),
+            Err(OverheadError::ClockMovedBackwards {
+                start: 2_000,
+                end: 1_500
             })
         );
     }
