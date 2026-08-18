@@ -1,4 +1,14 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    io::{self, Read},
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,6 +19,8 @@ use crate::{
     gguf::ModelInfo,
     llama::{LlamaInstallation, now_ms},
 };
+
+const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkSample {
@@ -65,6 +77,30 @@ impl BenchmarkRun {
     }
 }
 
+/// Cooperative cancellation handle for a running benchmark process.
+///
+/// Clones share the same atomic state, so UI/controller code can retain one
+/// handle while a worker thread owns another. Cancellation is one-way for a
+/// single benchmark invocation; create a fresh token for a new run.
+#[derive(Debug, Clone, Default)]
+pub struct BenchmarkCancellation {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl BenchmarkCancellation {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
 pub fn default_benchmark_arguments(
     installation: &LlamaInstallation,
     model: &ModelInfo,
@@ -87,6 +123,22 @@ pub fn run_default_benchmark(
     installation: &LlamaInstallation,
     model: &ModelInfo,
 ) -> Result<BenchmarkRun> {
+    run_default_benchmark_inner(installation, model, None)
+}
+
+pub fn run_default_benchmark_cancellable(
+    installation: &LlamaInstallation,
+    model: &ModelInfo,
+    cancellation: &BenchmarkCancellation,
+) -> Result<BenchmarkRun> {
+    run_default_benchmark_inner(installation, model, Some(cancellation))
+}
+
+fn run_default_benchmark_inner(
+    installation: &LlamaInstallation,
+    model: &ModelInfo,
+    cancellation: Option<&BenchmarkCancellation>,
+) -> Result<BenchmarkRun> {
     let bench = installation
         .bench
         .as_ref()
@@ -96,10 +148,19 @@ pub fn run_default_benchmark(
     let arguments = default_benchmark_arguments(installation, model);
     let started_at_unix_ms = now_ms();
 
-    let output = Command::new(&bench_binary).args(&arguments).output()?;
+    let output = run_process(&bench_binary, &arguments, cancellation)?;
     let finished_at_unix_ms = now_ms();
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    if output.interrupted {
+        return Err(LlamaManagerError::BenchmarkInterrupted {
+            program: bench_binary.display().to_string(),
+            code: output.status.code(),
+            stdout,
+            stderr,
+        });
+    }
 
     if !output.status.success() {
         return Err(LlamaManagerError::ProcessFailed {
@@ -139,8 +200,84 @@ pub fn run_default_benchmark(
     })
 }
 
+struct CapturedProcess {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    interrupted: bool,
+}
+
+fn run_process(
+    program: &Path,
+    arguments: &[String],
+    cancellation: Option<&BenchmarkCancellation>,
+) -> Result<CapturedProcess> {
+    let mut child = Command::new(program)
+        .args(arguments)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| LlamaManagerError::State("benchmark stdout pipe was not created".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| LlamaManagerError::State("benchmark stderr pipe was not created".into()))?;
+    let stdout_reader = spawn_pipe_reader(stdout);
+    let stderr_reader = spawn_pipe_reader(stderr);
+
+    let (status, interrupted) = loop {
+        if let Some(status) = child.try_wait()? {
+            break (status, false);
+        }
+
+        if cancellation.is_some_and(|token| token.is_cancelled()) {
+            child.kill()?;
+            let status = child.wait()?;
+            break (status, true);
+        }
+
+        thread::sleep(CANCELLATION_POLL_INTERVAL);
+    };
+
+    let stdout = join_pipe_reader(stdout_reader, "stdout")?;
+    let stderr = join_pipe_reader(stderr_reader, "stderr")?;
+
+    Ok(CapturedProcess {
+        status,
+        stdout,
+        stderr,
+        interrupted,
+    })
+}
+
+fn spawn_pipe_reader<T>(mut pipe: T) -> JoinHandle<io::Result<Vec<u8>>>
+where
+    T: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        pipe.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    })
+}
+
+fn join_pipe_reader(reader: JoinHandle<io::Result<Vec<u8>>>, stream: &str) -> Result<Vec<u8>> {
+    reader
+        .join()
+        .map_err(|_| {
+            LlamaManagerError::State(format!("benchmark {stream} reader thread panicked"))
+        })?
+        .map_err(LlamaManagerError::Io)
+}
+
 fn parse_json_output(raw: &str) -> Result<Vec<BenchmarkSample>> {
-    let rows: Value = serde_json::from_str(raw.trim())?;
+    let rows: Value = serde_json::from_str(raw.trim()).map_err(|error| {
+        LlamaManagerError::BenchmarkParse(format!("invalid llama-bench JSON: {error}"))
+    })?;
     let rows = rows.as_array().ok_or_else(|| {
         LlamaManagerError::BenchmarkParse("JSON output root is not an array".into())
     })?;
@@ -269,7 +406,7 @@ fn test_label(prompt: u64, generated: u64, depth: u64) -> String {
     }
 }
 
-pub fn format_command(program: &std::path::Path, args: &[String]) -> String {
+pub fn format_command(program: &Path, args: &[String]) -> String {
     std::iter::once(program.to_string_lossy().into_owned())
         .chain(args.iter().cloned())
         .map(|part| quote_for_display(&part))
@@ -303,9 +440,34 @@ mod tests {
     }
 
     #[test]
+    fn malformed_json_cannot_become_benchmark_success() {
+        assert!(matches!(
+            parse_json_output("[{not valid json}]"),
+            Err(LlamaManagerError::BenchmarkParse(_))
+        ));
+        assert!(matches!(
+            parse_json_output(r#"[{"n_prompt":512}]"#),
+            Err(LlamaManagerError::BenchmarkParse(_))
+        ));
+        assert!(matches!(
+            parse_json_output(r#"{"avg_ts":1.0}"#),
+            Err(LlamaManagerError::BenchmarkParse(_))
+        ));
+    }
+
+    #[test]
+    fn cancellation_token_is_shared_across_clones() {
+        let worker = BenchmarkCancellation::new();
+        let controller = worker.clone();
+        assert!(!worker.is_cancelled());
+        controller.cancel();
+        assert!(worker.is_cancelled());
+    }
+
+    #[test]
     fn command_preview_quotes_paths() {
         let preview = format_command(
-            std::path::Path::new(r"D:\llama cpp\llama-bench.exe"),
+            Path::new(r"D:\llama cpp\llama-bench.exe"),
             &["-m".into(), r"F:\Models\My Model.gguf".into()],
         );
         assert!(preview.contains(r#""D:\llama cpp\llama-bench.exe""#));
