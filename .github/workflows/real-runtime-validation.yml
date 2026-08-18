@@ -45,12 +45,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $runtimeRoot = Join-Path $env:RUNNER_TEMP 'external llama cpp 外部 build'
           $modelRoot = Join-Path $env:RUNNER_TEMP 'Models with spaces 模型'
+          $benchModelRoot = Join-Path $env:RUNNER_TEMP 'Benchmark Models with spaces'
           $evidenceRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts\real-runtime'
           $archive = Join-Path $env:RUNNER_TEMP 'llama-win-cpu.zip'
           $model = Join-Path $modelRoot 'stories 15M v3 模型.gguf'
           $modelV2 = Join-Path $modelRoot 'TinyLlama v2 模型.gguf'
+          $benchModel = Join-Path $benchModelRoot 'stories 15M benchmark.gguf'
 
-          New-Item -ItemType Directory -Force -Path $runtimeRoot, $modelRoot, $evidenceRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $runtimeRoot, $modelRoot, $benchModelRoot, $evidenceRoot | Out-Null
 
           Invoke-WebRequest -Uri $env:LLAMA_ARCHIVE_URL -OutFile $archive
           $archiveSha = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -60,6 +62,11 @@ jobs:
           $modelSha = (Get-FileHash -Path $model -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($modelSha -ne $env:MODEL_SHA256) {
             throw "Published GGUF SHA-256 mismatch. Expected $env:MODEL_SHA256, got $modelSha"
+          }
+          Copy-Item -LiteralPath $model -Destination $benchModel
+          $benchModelSha = (Get-FileHash -Path $benchModel -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($benchModelSha -ne $modelSha) {
+            throw "Benchmark GGUF copy identity mismatch. Expected $modelSha, got $benchModelSha"
           }
 
           Invoke-WebRequest -Uri $env:MODEL_V2_URL -OutFile $modelV2
@@ -79,6 +86,7 @@ jobs:
           "LLAMAMANAGER_REAL_MODEL_SHA256=$modelSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_REAL_MODEL_V2=$modelV2" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_REAL_MODEL_V2_SHA256=$modelV2Sha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_REAL_BENCH_MODEL=$benchModel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_REAL_EVIDENCE_DIR=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_LLAMA_RELEASE_TAG=$env:LLAMA_RELEASE_TAG" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_LLAMA_ARCHIVE_SHA256=$archiveSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -89,10 +97,12 @@ jobs:
             llama_archive_sha256 = $archiveSha
             model_v3_url = $env:MODEL_URL
             model_v3_sha256 = $modelSha
-            model_v3_path = $model
+            model_v3_unicode_path = $model
+            benchmark_model_sha256 = $benchModelSha
+            benchmark_model_spaces_path = $benchModel
             model_v2_url = $env:MODEL_V2_URL
             model_v2_sha256 = $modelV2Sha
-            model_v2_path = $modelV2
+            model_v2_unicode_path = $modelV2
             runtime_root = $runtimeRoot
             server_path = $server.FullName
             bench_path = $bench.FullName
