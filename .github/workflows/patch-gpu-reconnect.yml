@@ -1,0 +1,65 @@
+name: Patch NVML reconnect hardening
+
+on:
+  push:
+    branches:
+      - agent/m6-gpu-telemetry
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/m6-gpu-telemetry
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Reinitialize NVML after provider-level failure
+        shell: pwsh
+        run: |
+          $path = 'src/gpu_telemetry.rs'
+          $text = (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n")
+          $old = @'
+    impl GpuBackend for NvmlBackend {
+        fn sample_adapters(&mut self) -> Result<BackendSnapshot, BackendProviderError> {
+            self.library()?.sample_adapters()
+        }
+    }
+'@
+          $new = @'
+    impl GpuBackend for NvmlBackend {
+        fn sample_adapters(&mut self) -> Result<BackendSnapshot, BackendProviderError> {
+            let result = self.library()?.sample_adapters();
+            if result.is_err() {
+                self.library = None;
+            }
+            result
+        }
+    }
+'@
+          if (-not $text.Contains($old)) {
+            throw 'NVML backend replacement anchor not found'
+          }
+          $text = $text.Replace($old, $new)
+          [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+          cargo fmt --all
+          cargo check --all-targets
+
+      - name: Commit source hardening
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- src/gpu_telemetry.rs)) {
+            Write-Host 'No source change produced.'
+            exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/gpu_telemetry.rs
+          git commit -m 'fix(telemetry): reinitialize NVML after provider failure'
+          git push origin HEAD:agent/m6-gpu-telemetry
