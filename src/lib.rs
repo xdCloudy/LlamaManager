@@ -1,3 +1,4 @@
+#[path = "app_shell.rs"]
 pub mod app;
 pub mod benchmark;
 pub mod compatibility;
@@ -6,6 +7,9 @@ pub mod error;
 pub mod gguf;
 pub mod llama;
 pub mod model_library;
+pub mod model_library_actions;
+#[path = "model_library_ui_threadsafe.rs"]
+pub mod model_library_ui;
 pub mod model_store;
 pub mod models_ini;
 pub mod models_ini_editor;
