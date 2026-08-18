@@ -148,9 +148,9 @@ jobs:
           }
 
           $telemetry = Get-Content -LiteralPath $telemetryPath -Raw | ConvertFrom-Json -Depth 20
-          if ($telemetry.cpu.logical_processor_count.state -ne 'live' -or
-              $telemetry.cpu.physical_core_count.state -ne 'live' -or
-              $telemetry.memory.total_physical_bytes.state -ne 'live') {
+          if ($telemetry.cpu.logical_processor_count.state.state -ne 'live' -or
+              $telemetry.cpu.physical_core_count.state.state -ne 'live' -or
+              $telemetry.memory.total_physical_bytes.state.state -ne 'live') {
             throw 'hardware telemetry did not expose live topology and total-memory evidence'
           }
 
@@ -159,9 +159,9 @@ jobs:
           $cimLogical = [uint64](($processors | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
           $cimPhysical = [uint64](($processors | Measure-Object -Property NumberOfCores -Sum).Sum)
           $cimTotalBytes = [uint64]$os.TotalVisibleMemorySize * 1KB
-          $providerLogical = [uint64]$telemetry.cpu.logical_processor_count.value
-          $providerPhysical = [uint64]$telemetry.cpu.physical_core_count.value
-          $providerTotalBytes = [uint64]$telemetry.memory.total_physical_bytes.value
+          $providerLogical = [uint64]$telemetry.cpu.logical_processor_count.state.value
+          $providerPhysical = [uint64]$telemetry.cpu.physical_core_count.state.value
+          $providerTotalBytes = [uint64]$telemetry.memory.total_physical_bytes.state.value
 
           if ($providerLogical -ne $cimLogical) {
             throw "logical processor mismatch: provider=$providerLogical CIM=$cimLogical"
