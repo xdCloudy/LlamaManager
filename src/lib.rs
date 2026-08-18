@@ -20,6 +20,7 @@ pub mod multimodal;
 pub mod paths;
 pub mod persistence;
 pub mod profile_generator;
+pub mod router;
 pub mod server_command;
 pub mod server_console;
 pub mod server_logs;
