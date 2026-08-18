@@ -1,0 +1,121 @@
+name: PR 133 identity autofix
+
+on:
+  push:
+    branches:
+      - agent/m5-switch-benchmark
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/m5-switch-benchmark
+
+      - name: Align benchmark identity resolution with router operations
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/router_switch_benchmark.rs")
+          text = path.read_text(encoding="utf-8")
+          old = '''fn library_identity(
+              model: &crate::router::RouterModel,
+              store: &ModelStore,
+          ) -> Result<(String, String), RouterSwitchBenchmarkError> {
+              let model_id = model.library_link.model_id.clone().ok_or_else(|| {
+                  RouterSwitchBenchmarkError::ModelIdentityUnproven {
+                      model: model.id.clone(),
+                  }
+              })?;
+              let record = store
+                  .get_model(&model_id)
+                  .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?
+                  .ok_or_else(|| RouterSwitchBenchmarkError::LibraryModelMissing {
+                      model: model.id.clone(),
+                      model_id: model_id.clone(),
+                  })?;
+              Ok((model_id, record.sha256))
+          }
+          '''
+          new = '''fn library_identity(
+              model: &crate::router::RouterModel,
+              store: &ModelStore,
+          ) -> Result<(String, String), RouterSwitchBenchmarkError> {
+              if let Some(model_id) = model.library_link.model_id.as_ref() {
+                  let record = store
+                      .get_model(model_id)
+                      .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?
+                      .ok_or_else(|| RouterSwitchBenchmarkError::LibraryModelMissing {
+                          model: model.id.clone(),
+                          model_id: model_id.clone(),
+                      })?;
+                  return Ok((model_id.clone(), record.sha256));
+              }
+
+              let records = store
+                  .list_model_records()
+                  .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?;
+              let mut candidates = Vec::new();
+              for record in records {
+                  let exact_path = model
+                      .path
+                      .as_ref()
+                      .is_some_and(|path| path == &record.model.path);
+                  let exact_sha = model
+                      .sha256
+                      .as_deref()
+                      .is_some_and(|sha| sha.eq_ignore_ascii_case(&record.model.sha256));
+                  let path_text = record.model.path.to_string_lossy();
+                  let exact_argv = model
+                      .status
+                      .args
+                      .iter()
+                      .any(|arg| arg == path_text.as_ref());
+                  if exact_path || exact_sha || exact_argv {
+                      candidates.push(record.model);
+                  }
+              }
+
+              match candidates.len() {
+                  1 => {
+                      let record = candidates.remove(0);
+                      Ok((record.id, record.sha256))
+                  }
+                  _ => Err(RouterSwitchBenchmarkError::ModelIdentityUnproven {
+                      model: model.id.clone(),
+                  }),
+              }
+          }
+          '''
+
+          if old not in text:
+              if new in text:
+                  print("identity fallback already applied")
+                  raise SystemExit(0)
+              raise SystemExit("expected library_identity block not found")
+
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Format and test benchmark code
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo test router_switch_benchmark
+
+      - name: Commit focused fix
+        shell: bash
+        run: |
+          if git diff --quiet -- src/router_switch_benchmark.rs; then
+            echo "No patch to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/router_switch_benchmark.rs
+          git commit -m "fix(router): resolve benchmark models from exact argv evidence"
+          git push origin HEAD:agent/m5-switch-benchmark
