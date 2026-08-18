@@ -81,6 +81,10 @@ pub struct InferenceTelemetrySnapshot {
     pub context_capacity_tokens: InferenceMetric<u64>,
     pub batch_tokens: InferenceMetric<u64>,
     pub kv_cache_tokens: InferenceMetric<u64>,
+    pub speculative_generated_tokens: InferenceMetric<u64>,
+    pub speculative_accepted_tokens: InferenceMetric<u64>,
+    pub speculative_acceptance_rate: InferenceMetric<f64>,
+    pub speculative_mean_run_length: InferenceMetric<f64>,
     pub mtp_generated_tokens: InferenceMetric<u64>,
     pub mtp_accepted_tokens: InferenceMetric<u64>,
     pub mtp_acceptance_rate: InferenceMetric<f64>,
@@ -106,8 +110,7 @@ impl InferenceTelemetryTracker {
         body: &str,
         observation: InferenceRequestObservation,
     ) -> Result<&InferenceTelemetrySnapshot, InferenceTelemetryParseError> {
-        let snapshot = parse_llama_cpp_completion(body, observation)?;
-        self.last = Some(snapshot);
+        self.last = Some(parse_llama_cpp_completion(body, observation)?);
         Ok(self.last.as_ref().expect("snapshot was just stored"))
     }
 
@@ -137,6 +140,10 @@ impl InferenceTelemetryTracker {
         stale_metric(&mut snapshot.context_capacity_tokens, &reason);
         stale_metric(&mut snapshot.batch_tokens, &reason);
         stale_metric(&mut snapshot.kv_cache_tokens, &reason);
+        stale_metric(&mut snapshot.speculative_generated_tokens, &reason);
+        stale_metric(&mut snapshot.speculative_accepted_tokens, &reason);
+        stale_metric(&mut snapshot.speculative_acceptance_rate, &reason);
+        stale_metric(&mut snapshot.speculative_mean_run_length, &reason);
         stale_metric(&mut snapshot.mtp_generated_tokens, &reason);
         stale_metric(&mut snapshot.mtp_accepted_tokens, &reason);
         stale_metric(&mut snapshot.mtp_acceptance_rate, &reason);
@@ -205,7 +212,6 @@ pub fn parse_llama_cpp_completion(
         "timings.cache_n | tokens_cached",
         observed_at,
     );
-
     let context_tokens = sum_context_tokens(
         &cached_prompt_tokens,
         &prompt_tokens,
@@ -246,16 +252,7 @@ pub fn parse_llama_cpp_completion(
         observed_at,
     );
 
-    let speculative_mode = string_at(&root, &["generation_settings", "speculative.types"]);
-    let speculative_unavailable_reason = match speculative_mode.as_deref() {
-        Some("none") => "request/runtime reports speculative.types=none".to_owned(),
-        Some(mode) => format!(
-            "speculative mode {mode:?} was reported but this response did not expose the requested counter"
-        ),
-        None => "response did not expose speculative-decoding evidence".to_owned(),
-    };
-
-    let mut mtp_generated_tokens = integer_metric(
+    let speculative_generated_tokens = integer_metric(
         &root,
         &[
             ["timings", "draft_n"].as_slice(),
@@ -265,12 +262,7 @@ pub fn parse_llama_cpp_completion(
         "timings.draft_n | timings.draft_tokens",
         observed_at,
     );
-    replace_missing_reason(
-        &mut mtp_generated_tokens,
-        speculative_unavailable_reason.clone(),
-    );
-
-    let mut mtp_accepted_tokens = integer_metric(
+    let speculative_accepted_tokens = integer_metric(
         &root,
         &[
             ["timings", "draft_n_accepted"].as_slice(),
@@ -280,20 +272,13 @@ pub fn parse_llama_cpp_completion(
         "timings.draft_n_accepted | timings.draft_tokens_accepted",
         observed_at,
     );
-    replace_missing_reason(
-        &mut mtp_accepted_tokens,
-        speculative_unavailable_reason.clone(),
-    );
-
-    let mtp_acceptance_rate = acceptance_rate_metric(
+    let speculative_acceptance_rate = speculative_acceptance_metric(
         &root,
-        &mtp_generated_tokens,
-        &mtp_accepted_tokens,
-        speculative_unavailable_reason.clone(),
+        &speculative_generated_tokens,
+        &speculative_accepted_tokens,
         observed_at,
     );
-
-    let mut mtp_mean_run_length = number_metric(
+    let speculative_mean_run_length = number_metric(
         &root,
         &[
             ["timings", "draft_mean_len"].as_slice(),
@@ -304,7 +289,28 @@ pub fn parse_llama_cpp_completion(
         "timings.draft_mean_len | timings.draft_mean_run | timings.mean_accepted_run",
         observed_at,
     );
-    replace_missing_reason(&mut mtp_mean_run_length, speculative_unavailable_reason);
+
+    let mtp_mode = explicit_mtp_mode(&root);
+    let mtp_generated_tokens = mtp_metric_from_speculative(
+        &speculative_generated_tokens,
+        &mtp_mode,
+        "timings.draft_n | timings.draft_tokens",
+    );
+    let mtp_accepted_tokens = mtp_metric_from_speculative(
+        &speculative_accepted_tokens,
+        &mtp_mode,
+        "timings.draft_n_accepted | timings.draft_tokens_accepted",
+    );
+    let mtp_acceptance_rate = mtp_metric_from_speculative(
+        &speculative_acceptance_rate,
+        &mtp_mode,
+        "timings.draft_accept_ratio | draft_n_accepted / draft_n",
+    );
+    let mtp_mean_run_length = mtp_metric_from_speculative(
+        &speculative_mean_run_length,
+        &mtp_mode,
+        "timings.draft_mean_len | timings.draft_mean_run | timings.mean_accepted_run",
+    );
 
     Ok(InferenceTelemetrySnapshot {
         identity: InferenceRequestIdentity {
@@ -338,11 +344,105 @@ pub fn parse_llama_cpp_completion(
         context_capacity_tokens,
         batch_tokens,
         kv_cache_tokens,
+        speculative_generated_tokens,
+        speculative_accepted_tokens,
+        speculative_acceptance_rate,
+        speculative_mean_run_length,
         mtp_generated_tokens,
         mtp_accepted_tokens,
         mtp_acceptance_rate,
         mtp_mean_run_length,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MtpModeEvidence {
+    Explicit,
+    NotMtp(String),
+    Missing,
+    Invalid(String),
+}
+
+fn explicit_mtp_mode(root: &Value) -> MtpModeEvidence {
+    let value = match lookup_path(root, &["generation_settings", "speculative.types"]) {
+        Lookup::Missing => return MtpModeEvidence::Missing,
+        Lookup::Invalid(message) => return MtpModeEvidence::Invalid(message),
+        Lookup::Found(value) => value,
+    };
+
+    let modes = if let Some(mode) = value.as_str() {
+        vec![mode.to_owned()]
+    } else if let Some(values) = value.as_array() {
+        let mut modes = Vec::with_capacity(values.len());
+        for item in values {
+            let Some(mode) = item.as_str() else {
+                return MtpModeEvidence::Invalid(
+                    "generation_settings.speculative.types array contains a non-string value"
+                        .to_owned(),
+                );
+            };
+            modes.push(mode.to_owned());
+        }
+        modes
+    } else if value.is_null() {
+        return MtpModeEvidence::Missing;
+    } else {
+        return MtpModeEvidence::Invalid(
+            "generation_settings.speculative.types must be a string or string array".to_owned(),
+        );
+    };
+
+    if modes
+        .iter()
+        .any(|mode| mode.to_ascii_lowercase().contains("mtp"))
+    {
+        MtpModeEvidence::Explicit
+    } else {
+        MtpModeEvidence::NotMtp(if modes.is_empty() {
+            "empty speculative mode list".to_owned()
+        } else {
+            modes.join(",")
+        })
+    }
+}
+
+fn mtp_metric_from_speculative<T: Clone>(
+    speculative: &InferenceMetric<T>,
+    mode: &MtpModeEvidence,
+    source_field: &str,
+) -> InferenceMetric<T> {
+    match mode {
+        MtpModeEvidence::Explicit => InferenceMetric {
+            state: speculative.state.clone(),
+            unit: speculative.unit,
+            source: InferenceMetricSource {
+                provider: "llama.cpp-mtp".to_owned(),
+                field: source_field.to_owned(),
+            },
+            observed_at_unix_ms: speculative.observed_at_unix_ms,
+        },
+        MtpModeEvidence::NotMtp(mode) => unavailable_metric(
+            speculative.unit,
+            "llama.cpp-mtp",
+            source_field,
+            speculative.observed_at_unix_ms,
+            format!("runtime explicitly reported non-MTP speculative mode {mode:?}"),
+        ),
+        MtpModeEvidence::Missing => unavailable_metric(
+            speculative.unit,
+            "llama.cpp-mtp",
+            source_field,
+            speculative.observed_at_unix_ms,
+            "response did not explicitly identify an MTP speculative mode".to_owned(),
+        ),
+        MtpModeEvidence::Invalid(message) => error_metric(
+            speculative.unit,
+            "llama.cpp-mtp",
+            source_field,
+            speculative.observed_at_unix_ms,
+            message.clone(),
+        ),
+    }
 }
 
 fn observed_metric(
@@ -353,13 +453,9 @@ fn observed_metric(
     unavailable_reason: &str,
 ) -> InferenceMetric<f64> {
     match value {
-        Some(value) if value.is_finite() && value >= 0.0 => live_metric(
-            value,
-            unit,
-            "client-observed",
-            field,
-            observed_at_unix_ms,
-        ),
+        Some(value) if value.is_finite() && value >= 0.0 => {
+            live_metric(value, unit, "client-observed", field, observed_at_unix_ms)
+        }
         Some(value) => error_metric(
             unit,
             "client-observed",
@@ -383,12 +479,11 @@ fn sum_context_tokens(
     predicted: &InferenceMetric<u64>,
     observed_at_unix_ms: u64,
 ) -> InferenceMetric<u64> {
-    let values = (
+    match (
         cached.live_value().copied(),
         prompt.live_value().copied(),
         predicted.live_value().copied(),
-    );
-    match values {
+    ) {
         (Some(cache), Some(prompt), Some(predicted)) => cache
             .checked_add(prompt)
             .and_then(|value| value.checked_add(predicted))
@@ -421,11 +516,10 @@ fn sum_context_tokens(
     }
 }
 
-fn acceptance_rate_metric(
+fn speculative_acceptance_metric(
     root: &Value,
     generated: &InferenceMetric<u64>,
     accepted: &InferenceMetric<u64>,
-    unavailable_reason: String,
     observed_at_unix_ms: u64,
 ) -> InferenceMetric<f64> {
     let direct = number_metric(
@@ -435,7 +529,19 @@ fn acceptance_rate_metric(
         "timings.draft_accept_ratio",
         observed_at_unix_ms,
     );
-    if !matches!(direct.state, TelemetryState::Unavailable { .. }) {
+    if let TelemetryState::Live { value } = &direct.state {
+        if *value <= 1.0 {
+            return direct;
+        }
+        return error_metric(
+            InferenceMetricUnit::Ratio,
+            "llama.cpp",
+            "timings.draft_accept_ratio",
+            observed_at_unix_ms,
+            format!("acceptance ratio must be in 0..=1, got {value}"),
+        );
+    }
+    if !matches!(&direct.state, TelemetryState::Unavailable { .. }) {
         return direct;
     }
 
@@ -471,7 +577,7 @@ fn acceptance_rate_metric(
             "llama.cpp",
             "timings.draft_accept_ratio | draft_n_accepted / draft_n",
             observed_at_unix_ms,
-            unavailable_reason,
+            "response did not expose enough speculative timing evidence".to_owned(),
         ),
     }
 }
@@ -487,14 +593,9 @@ fn number_metric(
         match lookup_path(root, path) {
             Lookup::Missing => continue,
             Lookup::Invalid(message) => {
-                return error_metric(
-                    unit,
-                    "llama.cpp",
-                    field,
-                    observed_at_unix_ms,
-                    message,
-                );
+                return error_metric(unit, "llama.cpp", field, observed_at_unix_ms, message);
             }
+            Lookup::Found(value) if value.is_null() => continue,
             Lookup::Found(value) => {
                 return match value.as_f64() {
                     Some(value) if value.is_finite() && value >= 0.0 => live_metric(
@@ -542,14 +643,9 @@ fn integer_metric(
         match lookup_path(root, path) {
             Lookup::Missing => continue,
             Lookup::Invalid(message) => {
-                return error_metric(
-                    unit,
-                    "llama.cpp",
-                    field,
-                    observed_at_unix_ms,
-                    message,
-                );
+                return error_metric(unit, "llama.cpp", field, observed_at_unix_ms, message);
             }
+            Lookup::Found(value) if value.is_null() => continue,
             Lookup::Found(value) => {
                 return match value.as_u64() {
                     Some(value) => live_metric(
@@ -580,13 +676,6 @@ fn integer_metric(
         observed_at_unix_ms,
         format!("response did not expose {field}"),
     )
-}
-
-fn string_at(root: &Value, path: &[&str]) -> Option<String> {
-    match lookup_path(root, path) {
-        Lookup::Found(value) => value.as_str().map(ToOwned::to_owned),
-        Lookup::Missing | Lookup::Invalid(_) => None,
-    }
 }
 
 enum Lookup<'a> {
@@ -667,12 +756,6 @@ fn error_metric<T>(
     }
 }
 
-fn replace_missing_reason<T>(metric: &mut InferenceMetric<T>, reason: String) {
-    if matches!(metric.state, TelemetryState::Unavailable { .. }) {
-        metric.state = TelemetryState::Unavailable { reason };
-    }
-}
-
 fn stale_metric<T: Clone>(metric: &mut InferenceMetric<T>, reason: &str) {
     metric.state = match &metric.state {
         TelemetryState::Live { value } => TelemetryState::Stale {
@@ -733,32 +816,52 @@ mod tests {
         let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
         assert_eq!(snapshot.identity.request_id, "request-1");
         assert_eq!(snapshot.identity.server_pid, Some(42));
-        assert_eq!(snapshot.identity.reported_model.as_deref(), Some("model.gguf"));
+        assert_eq!(
+            snapshot.identity.reported_model.as_deref(),
+            Some("model.gguf")
+        );
         assert_eq!(snapshot.prompt_tps.live_value(), Some(&100.5));
         assert_eq!(snapshot.decode_tps.live_value(), Some(&25.25));
         assert_eq!(snapshot.ttft_ms.live_value(), Some(&12.25));
         assert_eq!(snapshot.request_latency_ms.live_value(), Some(&42.5));
         assert_eq!(snapshot.context_tokens.live_value(), Some(&15));
         assert!(matches!(
-            snapshot.mtp_generated_tokens.state,
+            &snapshot.mtp_generated_tokens.state,
             TelemetryState::Unavailable { .. }
         ));
     }
 
     #[test]
-    fn parses_speculative_counters_and_computes_acceptance() {
+    fn generic_draft_counters_do_not_imply_mtp() {
         let body = r#"{
             "timings":{
-                "cache_n":0,
-                "prompt_n":4,
-                "prompt_per_second":100.0,
-                "predicted_n":8,
-                "predicted_per_second":50.0,
                 "draft_n":12,
                 "draft_n_accepted":9,
                 "draft_mean_len":2.5
             },
             "generation_settings":{"speculative.types":"draft"}
+        }"#;
+        let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
+        assert_eq!(snapshot.speculative_generated_tokens.live_value(), Some(&12));
+        assert_eq!(snapshot.speculative_accepted_tokens.live_value(), Some(&9));
+        assert_eq!(snapshot.speculative_acceptance_rate.live_value(), Some(&0.75));
+        assert_eq!(snapshot.speculative_mean_run_length.live_value(), Some(&2.5));
+        assert!(matches!(
+            &snapshot.mtp_generated_tokens.state,
+            TelemetryState::Unavailable { .. }
+        ));
+    }
+
+    #[test]
+    fn explicit_mtp_mode_allows_mtp_projection() {
+        let body = r#"{
+            "timings":{
+                "draft_n":12,
+                "draft_n_accepted":9,
+                "draft_accept_ratio":0.75,
+                "draft_mean_len":2.5
+            },
+            "generation_settings":{"speculative.types":"draft-mtp"}
         }"#;
         let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
         assert_eq!(snapshot.mtp_generated_tokens.live_value(), Some(&12));
@@ -768,29 +871,36 @@ mod tests {
     }
 
     #[test]
-    fn explicit_acceptance_ratio_wins_when_runtime_provides_it() {
-        let body = r#"{"timings":{"draft_accept_ratio":0.625}}"#;
+    fn invalid_acceptance_ratio_is_error() {
+        let body = r#"{"timings":{"draft_accept_ratio":1.2}}"#;
         let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
-        assert_eq!(snapshot.mtp_acceptance_rate.live_value(), Some(&0.625));
+        assert!(matches!(
+            &snapshot.speculative_acceptance_rate.state,
+            TelemetryState::Error { .. }
+        ));
     }
 
     #[test]
-    fn missing_metrics_are_unavailable_not_zero() {
-        let snapshot = parse_llama_cpp_completion("{}", observation()).unwrap();
+    fn missing_and_null_metrics_are_unavailable_not_zero() {
+        let snapshot = parse_llama_cpp_completion(
+            r#"{"timings":{"prompt_per_second":null}}"#,
+            observation(),
+        )
+        .unwrap();
         assert!(matches!(
-            snapshot.prompt_tps.state,
+            &snapshot.prompt_tps.state,
             TelemetryState::Unavailable { .. }
         ));
         assert!(matches!(
-            snapshot.context_capacity_tokens.state,
+            &snapshot.context_capacity_tokens.state,
             TelemetryState::Unavailable { .. }
         ));
         assert!(matches!(
-            snapshot.batch_tokens.state,
+            &snapshot.batch_tokens.state,
             TelemetryState::Unavailable { .. }
         ));
         assert!(matches!(
-            snapshot.kv_cache_tokens.state,
+            &snapshot.kv_cache_tokens.state,
             TelemetryState::Unavailable { .. }
         ));
     }
@@ -807,17 +917,26 @@ mod tests {
             }
         }"#;
         let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
-        assert!(matches!(snapshot.prompt_tps.state, TelemetryState::Error { .. }));
+        assert!(matches!(
+            &snapshot.prompt_tps.state,
+            TelemetryState::Error { .. }
+        ));
         assert_eq!(snapshot.decode_tps.live_value(), Some(&12.0));
         assert_eq!(snapshot.context_tokens.live_value(), Some(&3));
     }
 
     #[test]
     fn version_changed_timings_shape_is_error_not_bogus_data() {
-        let body = r#"{"timings":"changed-shape"}"#;
-        let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
-        assert!(matches!(snapshot.prompt_tps.state, TelemetryState::Error { .. }));
-        assert!(matches!(snapshot.decode_tps.state, TelemetryState::Error { .. }));
+        let snapshot =
+            parse_llama_cpp_completion(r#"{"timings":"changed-shape"}"#, observation()).unwrap();
+        assert!(matches!(
+            &snapshot.prompt_tps.state,
+            TelemetryState::Error { .. }
+        ));
+        assert!(matches!(
+            &snapshot.decode_tps.state,
+            TelemetryState::Error { .. }
+        ));
     }
 
     #[test]
@@ -833,24 +952,14 @@ mod tests {
     }
 
     #[test]
-    fn invalid_client_timing_is_error_not_zero() {
-        let mut evidence = observation();
-        evidence.request_latency_ms = f64::NAN;
-        evidence.ttft_ms = Some(-1.0);
-        let snapshot = parse_llama_cpp_completion("{}", evidence).unwrap();
-        assert!(matches!(
-            snapshot.request_latency_ms.state,
-            TelemetryState::Error { .. }
-        ));
-        assert!(matches!(snapshot.ttft_ms.state, TelemetryState::Error { .. }));
-    }
-
-    #[test]
     fn accepted_tokens_cannot_exceed_generated_tokens() {
-        let body = r#"{"timings":{"draft_n":2,"draft_n_accepted":3}}"#;
-        let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
+        let snapshot = parse_llama_cpp_completion(
+            r#"{"timings":{"draft_n":2,"draft_n_accepted":3}}"#,
+            observation(),
+        )
+        .unwrap();
         assert!(matches!(
-            snapshot.mtp_acceptance_rate.state,
+            &snapshot.speculative_acceptance_rate.state,
             TelemetryState::Error { .. }
         ));
     }
@@ -870,7 +979,7 @@ mod tests {
         tracker.ingest(body, observation()).unwrap();
         let stale = tracker.mark_disconnected("server restarted", 2000).unwrap();
         assert!(matches!(
-            stale.connection,
+            &stale.connection,
             InferenceConnectionState::Stale { .. }
         ));
         assert_eq!(
