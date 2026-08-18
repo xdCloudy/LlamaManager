@@ -215,3 +215,15 @@ On 2026-08-18 the repository owner then completed the remaining combined interac
 The Benchmark view showed the exact real `llama-bench.exe` invocation, reported completion with raw and parsed evidence retained, and displayed measured `pp512 41297.19 tok/s` and `tg128 3504.32 tok/s` results. The History view showed one persisted SQLite record with those values, and the Overview showed runtime detected, RPC backend, model ready, 433 discovered capabilities, and one persisted run.
 
 The operator-captured evidence and integrity hashes are recorded in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
+
+This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is **C5 — Complete**.
+
+## Workflow cleanup
+
+The active workflow set is intentionally limited to:
+
+- `ci.yml`
+- `release.yml`
+- `real-runtime-validation.yml`
+
+The real-runtime workflow is a permanent reproducible regression/evidence gate, not a temporary self-modifying validation workflow.
