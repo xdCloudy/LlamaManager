@@ -5,10 +5,14 @@ on:
     paths:
       - ".github/workflows/real-runtime-validation.yml"
       - "tests/real_runtime_validation.rs"
+      - "tests/real_server_readiness.rs"
       - "src/benchmark.rs"
       - "src/gguf.rs"
       - "src/llama.rs"
       - "src/persistence.rs"
+      - "src/server_command.rs"
+      - "src/server_process.rs"
+      - "src/server_readiness.rs"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +20,7 @@ permissions:
 
 jobs:
   real-runtime:
-    name: Real llama.cpp + GGUF + benchmark
+    name: Real llama.cpp + GGUF + benchmark + server readiness
     runs-on: windows-2025
     timeout-minutes: 30
     env:
@@ -123,12 +127,18 @@ jobs:
         shell: pwsh
         run: cargo test --test real_runtime_validation -- --ignored --nocapture
 
+      - name: Run real llama-server readiness and inference validation
+        shell: pwsh
+        run: cargo test --test real_server_readiness -- --ignored --nocapture
+
       - name: Show evidence summary
         if: always()
         shell: pwsh
         run: |
           $summary = 'artifacts\real-runtime\summary.json'
           if (Test-Path $summary) { Get-Content $summary }
+          $readiness = 'artifacts\real-runtime\server-readiness-inference.json'
+          if (Test-Path $readiness) { Get-Content $readiness }
 
       - name: Upload real runtime evidence
         if: always()
