@@ -125,7 +125,7 @@ pub fn compute_effective_config(document: &ModelsIniDocument, section: &str) -> 
 
 pub fn preview_override_edit(
     document: &ModelsIniDocument,
-    section: &str,
+    _section: &str,
     key: &str,
     edit: OverrideEdit,
 ) -> EffectiveEditPreview {
@@ -143,11 +143,13 @@ pub fn preview_override_edit(
                     section: line_section,
                     key: line_key,
                     value,
-                } if line_section == "*" && line_key == key => Some(EffectiveEditPreview::Inherited {
-                    key: key.to_owned(),
-                    value: value.clone(),
-                    global_line: line.line_number,
-                }),
+                } if line_section == "*" && line_key == key => {
+                    Some(EffectiveEditPreview::Inherited {
+                        key: key.to_owned(),
+                        value: value.clone(),
+                        global_line: line.line_number,
+                    })
+                }
                 _ => None,
             })
             .unwrap_or_else(|| EffectiveEditPreview::Unset {
@@ -220,12 +222,7 @@ mod tests {
         let document = ModelsIniDocument::parse("[*]\nfoo=global\n[model]\nfoo=local\n").unwrap();
 
         assert_eq!(
-            preview_override_edit(
-                &document,
-                "model",
-                "foo",
-                OverrideEdit::ResetToInherited
-            ),
+            preview_override_edit(&document, "model", "foo", OverrideEdit::ResetToInherited),
             EffectiveEditPreview::Inherited {
                 key: "foo".into(),
                 value: "global".into(),
@@ -245,12 +242,7 @@ mod tests {
     fn reset_without_global_default_becomes_explicitly_unset() {
         let document = ModelsIniDocument::parse("[model]\nfoo=local\n").unwrap();
         assert_eq!(
-            preview_override_edit(
-                &document,
-                "model",
-                "foo",
-                OverrideEdit::ResetToInherited
-            ),
+            preview_override_edit(&document, "model", "foo", OverrideEdit::ResetToInherited),
             EffectiveEditPreview::Unset { key: "foo".into() }
         );
     }
@@ -271,14 +263,18 @@ mod tests {
                 line: 7,
             }
         );
-        assert!(effective
-            .parser_diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.kind == ModelsIniDiagnosticKind::DuplicateSection));
-        assert!(effective
-            .parser_diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.kind == ModelsIniDiagnosticKind::DuplicateKey));
+        assert!(
+            effective
+                .parser_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.kind == ModelsIniDiagnosticKind::DuplicateSection)
+        );
+        assert!(
+            effective
+                .parser_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.kind == ModelsIniDiagnosticKind::DuplicateKey)
+        );
     }
 
     #[test]
