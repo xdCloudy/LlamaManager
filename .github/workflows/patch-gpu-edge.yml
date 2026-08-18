@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   patch:
+    # Trigger after the workflow exists so branch-push execution is unambiguous.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
