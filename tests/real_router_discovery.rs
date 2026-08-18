@@ -86,12 +86,7 @@ fn validates_real_router_role_and_live_model_registry() {
             panic!("real llama-server router exited before discovery: {status}");
         }
 
-        match discover_router_registry(
-            &installation,
-            &endpoint,
-            None,
-            Duration::from_secs(2),
-        ) {
+        match discover_router_registry(&installation, &endpoint, None, Duration::from_secs(2)) {
             Ok(registry) => break registry,
             Err(error) if Instant::now() < deadline => {
                 last_error = Some(error);
@@ -160,5 +155,8 @@ fn validates_real_router_role_and_live_model_registry() {
 
     child.0.kill().expect("stop real router after validation");
     let status = child.0.wait().expect("wait for stopped real router");
-    assert!(!status.success(), "explicit test cleanup should terminate router");
+    assert!(
+        !status.success(),
+        "explicit test cleanup should terminate router"
+    );
 }
