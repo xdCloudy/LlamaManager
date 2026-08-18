@@ -60,12 +60,8 @@ fn health_and_minimal_inference_are_both_required() {
     let endpoint = ServerEndpoint::loopback(server.port());
     let cancellation = AtomicBool::new(false);
 
-    let evidence = wait_for_ready_without_process(
-        &endpoint,
-        &quick_policy(),
-        &cancellation,
-    )
-    .unwrap();
+    let evidence =
+        wait_for_ready_without_process(&endpoint, &quick_policy(), &cancellation).unwrap();
 
     assert!(matches!(
         evidence.health,
@@ -88,12 +84,7 @@ fn unsupported_health_is_observed_instead_of_version_guessed() {
     let policy = quick_policy();
     let cancellation = AtomicBool::new(false);
 
-    let evidence = wait_for_ready_without_process(
-        &endpoint,
-        &policy,
-        &cancellation,
-    )
-    .unwrap();
+    let evidence = wait_for_ready_without_process(&endpoint, &policy, &cancellation).unwrap();
 
     match evidence.health {
         HealthCapabilityEvidence::UnsupportedObserved(items) => {
@@ -122,12 +113,8 @@ fn bearer_auth_success_and_rejection_are_distinct() {
     let cancellation = AtomicBool::new(false);
 
     let unauthenticated = ServerEndpoint::loopback(server.port());
-    let error = wait_for_ready_without_process(
-        &unauthenticated,
-        &quick_policy(),
-        &cancellation,
-    )
-    .unwrap_err();
+    let error = wait_for_ready_without_process(&unauthenticated, &quick_policy(), &cancellation)
+        .unwrap_err();
     assert!(matches!(
         error,
         ServerReadinessError::AuthenticationRejected {
@@ -138,12 +125,8 @@ fn bearer_auth_success_and_rejection_are_distinct() {
 
     let mut authenticated = ServerEndpoint::loopback(server.port());
     authenticated.api_key = Some("correct-key".into());
-    let ready = wait_for_ready_without_process(
-        &authenticated,
-        &quick_policy(),
-        &cancellation,
-    )
-    .unwrap();
+    let ready =
+        wait_for_ready_without_process(&authenticated, &quick_policy(), &cancellation).unwrap();
 
     assert!(ready.authenticated);
     assert!(
@@ -188,21 +171,14 @@ fn cancellation_is_distinct_from_transport_failure() {
     let endpoint = ServerEndpoint::loopback(9);
 
     assert_eq!(
-        wait_for_ready_without_process(
-            &endpoint,
-            &quick_policy(),
-            &cancellation,
-        )
-        .unwrap_err(),
+        wait_for_ready_without_process(&endpoint, &quick_policy(), &cancellation,).unwrap_err(),
         ServerReadinessError::Cancelled
     );
 }
 
 #[test]
 fn loading_server_times_out_with_bounded_backoff() {
-    let server = FakeHttpServer::spawn(|_| {
-        response(503, r#"{"status":"loading"}"#)
-    });
+    let server = FakeHttpServer::spawn(|_| response(503, r#"{"status":"loading"}"#));
     let endpoint = ServerEndpoint::loopback(server.port());
     let mut policy = quick_policy();
     policy.timeout = Duration::from_millis(120);
@@ -210,12 +186,7 @@ fn loading_server_times_out_with_bounded_backoff() {
     let cancellation = AtomicBool::new(false);
     let started = Instant::now();
 
-    let error = wait_for_ready_without_process(
-        &endpoint,
-        &policy,
-        &cancellation,
-    )
-    .unwrap_err();
+    let error = wait_for_ready_without_process(&endpoint, &policy, &cancellation).unwrap_err();
 
     assert!(matches!(
         error,
