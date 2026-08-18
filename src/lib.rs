@@ -8,6 +8,7 @@ pub mod llama;
 pub mod model_library;
 pub mod model_store;
 pub mod models_ini;
+pub mod models_ini_editor;
 pub mod models_ini_effective;
 pub mod models_ini_validation;
 pub mod multimodal;
