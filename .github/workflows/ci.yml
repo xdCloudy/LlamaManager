@@ -65,7 +65,6 @@ jobs:
 
       - name: Desktop process smoke test
         shell: pwsh
-        continue-on-error: true
         run: |
           $exe = (Resolve-Path "target\release\llamamanager.exe").Path
           $process = Start-Process -FilePath $exe -PassThru
