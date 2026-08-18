@@ -193,12 +193,8 @@ fn load_snapshot(db_path: &Path) -> UiResult<LibrarySnapshot> {
     Ok(LibrarySnapshot {
         runtime,
         models,
-        projectors: store
-            .list_projectors()
-            .map_err(|error| error.to_string())?,
-        scan_roots: store
-            .list_scan_roots()
-            .map_err(|error| error.to_string())?,
+        projectors: store.list_projectors().map_err(|error| error.to_string())?,
+        scan_roots: store.list_scan_roots().map_err(|error| error.to_string())?,
     })
 }
 
@@ -210,8 +206,7 @@ fn recompute_compatibility(db_path: &Path) -> UiResult<usize> {
         .map_err(|error| error.to_string())?
     else {
         return Err(
-            "No llama.cpp runtime is selected. Select one in the benchmark workspace first."
-                .into(),
+            "No llama.cpp runtime is selected. Select one in the benchmark workspace first.".into(),
         );
     };
 
@@ -222,7 +217,10 @@ fn recompute_compatibility(db_path: &Path) -> UiResult<usize> {
         .iter()
         .filter(|record| !record.locations.is_empty())
         .count();
-    for record in records.into_iter().filter(|record| !record.locations.is_empty()) {
+    for record in records
+        .into_iter()
+        .filter(|record| !record.locations.is_empty())
+    {
         let projector = store
             .associated_projector(&record.model.id)
             .map_err(|error| error.to_string())?;
@@ -470,11 +468,7 @@ fn begin_relink_projector(mut state: Signal<LibraryUiState>, projector_id: Strin
     });
 }
 
-fn begin_associate(
-    mut state: Signal<LibraryUiState>,
-    model_id: String,
-    projector_id: String,
-) {
+fn begin_associate(mut state: Signal<LibraryUiState>, model_id: String, projector_id: String) {
     if state.read().activity.is_busy() {
         return;
     }
@@ -855,7 +849,12 @@ fn model_card(item: ModelItem, state: Signal<LibraryUiState>, busy: bool) -> Ele
         .present_paths()
         .first()
         .map(|path| path.to_path_buf())
-        .or_else(|| item.record.locations.first().map(|location| location.path.clone()))
+        .or_else(|| {
+            item.record
+                .locations
+                .first()
+                .map(|location| location.path.clone())
+        })
         .unwrap_or_else(|| model.path.clone());
     let reasons = item
         .compatibility
@@ -991,11 +990,7 @@ fn model_card(item: ModelItem, state: Signal<LibraryUiState>, busy: bool) -> Ele
     }
 }
 
-fn projector_row(
-    projector: StoredProjector,
-    state: Signal<LibraryUiState>,
-    busy: bool,
-) -> Element {
+fn projector_row(projector: StoredProjector, state: Signal<LibraryUiState>, busy: bool) -> Element {
     let id = projector.projector.id.clone();
     let name = projector
         .projector
