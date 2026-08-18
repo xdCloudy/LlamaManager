@@ -28,6 +28,26 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $failed = $false
+          Get-ChildItem -Path . -Filter '*.ps1' -File -Recurse | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Error "PowerShell syntax errors in $($_.FullName): $($errors -join '; ')" -ErrorAction Continue
+            }
+          }
+          if ($failed) { exit 1 }
+
       - name: Formatting
         run: cargo fmt --all -- --check
 
