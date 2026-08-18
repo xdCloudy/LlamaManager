@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   normalize:
+    # Created first, then triggered so GitHub executes the branch-local workflow.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
