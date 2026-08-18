@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use crate::{
     model_library_ui::ModelLibraryView, models_ini_ui::ModelsIniView,
     router_management::RouterManagementView, server_ui::ServerLifecycleView,
+    telemetry_ui::TelemetryView,
 };
 
 #[path = "app.rs"]
@@ -79,8 +80,9 @@ const SHELL_CSS: &str = r#"
     left: 10px;
     right: 10px;
     justify-content: stretch;
+    overflow-x: auto;
   }
-  .surface-switcher button { flex: 1; padding: 0 5px; font-size: 7px; }
+  .surface-switcher button { flex: 1 0 auto; padding: 0 5px; font-size: 7px; }
 }
 "#;
 
@@ -91,6 +93,7 @@ enum Surface {
     Config,
     Router,
     Server,
+    Telemetry,
 }
 
 #[allow(non_snake_case)]
@@ -109,8 +112,10 @@ pub fn App() -> Element {
             ModelsIniView {}
         } else if current == Surface::Router {
             RouterManagementView {}
-        } else {
+        } else if current == Surface::Server {
             ServerLifecycleView {}
+        } else {
+            TelemetryView {}
         }
 
         nav { class: "surface-switcher", aria_label: "Workspace switcher",
@@ -138,6 +143,11 @@ pub fn App() -> Element {
                 class: if current == Surface::Server { "active" } else { "" },
                 onclick: move |_| surface.set(Surface::Server),
                 "SERVER LAB"
+            }
+            button {
+                class: if current == Surface::Telemetry { "active" } else { "" },
+                onclick: move |_| surface.set(Surface::Telemetry),
+                "TELEMETRY"
             }
         }
     }
