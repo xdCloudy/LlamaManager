@@ -265,13 +265,12 @@ where
     })
 }
 
-fn join_pipe_reader(
-    reader: JoinHandle<io::Result<Vec<u8>>>,
-    stream: &str,
-) -> Result<Vec<u8>> {
+fn join_pipe_reader(reader: JoinHandle<io::Result<Vec<u8>>>, stream: &str) -> Result<Vec<u8>> {
     reader
         .join()
-        .map_err(|_| LlamaManagerError::State(format!("benchmark {stream} reader thread panicked")))?
+        .map_err(|_| {
+            LlamaManagerError::State(format!("benchmark {stream} reader thread panicked"))
+        })?
         .map_err(LlamaManagerError::Io)
 }
 
