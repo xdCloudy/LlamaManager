@@ -90,7 +90,8 @@ pub fn validate_semantics(
             severity: ValidationSeverity::Error,
             code: "server_missing".into(),
             key: None,
-            message: "selected llama.cpp installation has no llama-server capability evidence".into(),
+            message: "selected llama.cpp installation has no llama-server capability evidence"
+                .into(),
             evidence: installation
                 .map(|value| vec![format!("installation={}", value.root_path.display())])
                 .unwrap_or_default(),
@@ -120,8 +121,9 @@ pub fn validate_semantics(
                 severity: ValidationSeverity::Warning,
                 code: "installation_unselected".into(),
                 key: Some(key.clone()),
-                message: "no llama.cpp installation is selected; runtime capability cannot be proven"
-                    .into(),
+                message:
+                    "no llama.cpp installation is selected; runtime capability cannot be proven"
+                        .into(),
                 evidence: Vec::new(),
             });
         }
@@ -201,7 +203,10 @@ fn validate_cross_field_constraints(
             code: "ubatch_exceeds_batch".into(),
             key: Some("ubatch-size".into()),
             message: "ubatch-size cannot exceed batch-size".into(),
-            evidence: vec![format!("batch-size={batch}"), format!("ubatch-size={ubatch}")],
+            evidence: vec![
+                format!("batch-size={batch}"),
+                format!("ubatch-size={ubatch}"),
+            ],
         });
     }
 }
@@ -425,7 +430,11 @@ mod tests {
         };
         let report = validate_semantics(&document, "model", Some(&installation("--threads N")));
         assert!(!report.can_apply());
-        assert!(report.errors().any(|issue| issue.code == "positive_integer_required"));
+        assert!(
+            report
+                .errors()
+                .any(|issue| issue.code == "positive_integer_required")
+        );
     }
 
     #[test]
@@ -433,7 +442,11 @@ mod tests {
         let document = ModelsIniDocument::parse("[*]\nfuture-option=42\n").unwrap();
         let report = validate_semantics(&document, "model", Some(&installation("--model FILE")));
         assert!(report.can_apply());
-        assert!(report.warnings().any(|issue| issue.code == "capability_unknown"));
+        assert!(
+            report
+                .warnings()
+                .any(|issue| issue.code == "capability_unknown")
+        );
     }
 
     #[test]
@@ -458,7 +471,11 @@ mod tests {
             Some(&installation("--batch-size N --ubatch-size N")),
         );
         assert!(!report.can_apply());
-        assert!(report.errors().any(|issue| issue.code == "ubatch_exceeds_batch"));
+        assert!(
+            report
+                .errors()
+                .any(|issue| issue.code == "ubatch_exceeds_batch")
+        );
     }
 
     #[test]
@@ -479,26 +496,39 @@ mod tests {
 
     #[test]
     fn diff_shows_source_and_effective_change_with_provenance() {
-        let before = ModelsIniDocument::parse(
-            "[*]\nthreads=8\nctx-size=4096\n[model]\nthreads=12\n",
-        )
-        .unwrap();
-        let after = ModelsIniDocument::parse(
-            "[*]\nthreads=10\nctx-size=8192\n[model]\nthreads=12\n",
-        )
-        .unwrap();
+        let before =
+            ModelsIniDocument::parse("[*]\nthreads=8\nctx-size=4096\n[model]\nthreads=12\n")
+                .unwrap();
+        let after =
+            ModelsIniDocument::parse("[*]\nthreads=10\nctx-size=8192\n[model]\nthreads=12\n")
+                .unwrap();
 
         let diff = diff_configs(&before, &after, "model");
         assert_eq!(diff.entries.len(), 2);
-        let threads = diff.entries.iter().find(|entry| entry.key == "threads").unwrap();
+        let threads = diff
+            .entries
+            .iter()
+            .find(|entry| entry.key == "threads")
+            .unwrap();
         assert_eq!(threads.global_before.as_deref(), Some("8"));
         assert_eq!(threads.global_after.as_deref(), Some("10"));
         assert_eq!(threads.effective_before, threads.effective_after);
 
-        let context = diff.entries.iter().find(|entry| entry.key == "ctx-size").unwrap();
+        let context = diff
+            .entries
+            .iter()
+            .find(|entry| entry.key == "ctx-size")
+            .unwrap();
         assert_eq!(context.effective_before.as_ref().unwrap().value, "4096");
         assert_eq!(context.effective_after.as_ref().unwrap().value, "8192");
-        assert!(context.effective_after.as_ref().unwrap().source.contains("global"));
+        assert!(
+            context
+                .effective_after
+                .as_ref()
+                .unwrap()
+                .source
+                .contains("global")
+        );
     }
 
     #[test]
@@ -511,13 +541,20 @@ mod tests {
         assert_eq!(before.serialize(), "[*]\napi-key=old-secret\n");
         assert_eq!(after.serialize(), "[*]\napi-key=new-secret\n");
         assert_eq!(diff.entries[0].global_after.as_deref(), Some("new-secret"));
-        assert_eq!(redacted.entries[0].global_after.as_deref(), Some("<redacted>"));
-        assert_eq!(redacted.entries[0].effective_after.as_ref().unwrap().value, "<redacted>");
+        assert_eq!(
+            redacted.entries[0].global_after.as_deref(),
+            Some("<redacted>")
+        );
+        assert_eq!(
+            redacted.entries[0].effective_after.as_ref().unwrap().value,
+            "<redacted>"
+        );
     }
 
     #[test]
     fn validation_output_order_is_stable() {
-        let document = ModelsIniDocument::parse("[*]\nz-future=x\na-future=y\nthreads=0\n").unwrap();
+        let document =
+            ModelsIniDocument::parse("[*]\nz-future=x\na-future=y\nthreads=0\n").unwrap();
         let selected = installation("--model FILE --threads N");
         let first = validate_semantics(&document, "model", Some(&selected));
         let second = validate_semantics(&document, "model", Some(&selected));
