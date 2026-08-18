@@ -17,243 +17,7 @@ use crate::{
 };
 
 const MODELS_INI_CSS: &str = r#"
-.mi-page {
-  min-height: 100vh;
-  padding: 30px 34px 90px;
-  color: #f6eaff;
-  background:
-    radial-gradient(circle at 74% 6%, rgba(255, 0, 180, 0.15), transparent 34%),
-    radial-gradient(circle at 12% 70%, rgba(0, 255, 255, 0.08), transparent 35%),
-    #07000e;
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  box-sizing: border-box;
-}
-.mi-page * { box-sizing: border-box; }
-.mi-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 28px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(0, 255, 255, 0.44);
-}
-.mi-kicker, .mi-section-kicker {
-  color: #00ffff;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-.mi-header h1 {
-  margin: 7px 0 8px;
-  font-size: clamp(25px, 3vw, 39px);
-  letter-spacing: 0.02em;
-}
-.mi-header p, .mi-muted {
-  color: #a996bb;
-  font-size: 11px;
-  line-height: 1.6;
-}
-.mi-runtime {
-  min-width: 220px;
-  text-align: right;
-}
-.mi-runtime strong { display: block; margin-top: 6px; font-size: 12px; }
-.mi-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 23px;
-  padding: 0 8px;
-  border: 1px solid rgba(0, 255, 255, 0.52);
-  color: #75ffe2;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.mi-badge.warn { color: #ffd36b; border-color: rgba(255, 211, 107, 0.58); }
-.mi-badge.error { color: #ff6b9f; border-color: rgba(255, 40, 120, 0.62); }
-.mi-badge.dirty { color: #ff45ff; border-color: rgba(255, 0, 255, 0.58); }
-.mi-notice {
-  margin: 16px 0 0;
-  padding: 11px 13px;
-  border: 1px solid rgba(117, 255, 226, 0.5);
-  background: rgba(0, 20, 18, 0.62);
-  color: #baffed;
-  font-size: 10px;
-}
-.mi-notice.error {
-  border-color: rgba(255, 40, 120, 0.6);
-  background: rgba(35, 0, 15, 0.6);
-  color: #ff8db4;
-}
-.mi-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0;
-  padding: 12px;
-  border: 1px solid rgba(0, 255, 255, 0.32);
-  background: rgba(15, 2, 28, 0.86);
-}
-.mi-button {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid #00dbe7;
-  border-radius: 0;
-  background: transparent;
-  color: #00f5ff;
-  font: inherit;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  text-transform: uppercase;
-}
-.mi-button:hover:not(:disabled), .mi-button.active {
-  color: #050009;
-  background: #00ffff;
-}
-.mi-button.magenta { border-color: #ff00d4; color: #ff45e1; }
-.mi-button.magenta:hover:not(:disabled), .mi-button.magenta.active {
-  color: #08000a;
-  background: #ff00d4;
-}
-.mi-button.danger { border-color: #ff356f; color: #ff6b95; }
-.mi-button:disabled { opacity: 0.35; cursor: not-allowed; }
-.mi-button:focus-visible, .mi-input:focus-visible, .mi-raw:focus-visible {
-  outline: 2px solid #ff00ff;
-  outline-offset: 2px;
-}
-.mi-target {
-  flex: 1 1 320px;
-  min-width: 0;
-  padding: 8px 10px;
-  border-left: 2px solid #ff00d4;
-  background: rgba(0, 0, 0, 0.35);
-  color: #d7c7e2;
-  font-size: 9px;
-  overflow-wrap: anywhere;
-}
-.mi-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.75fr);
-  gap: 12px;
-}
-.mi-panel {
-  border: 1px solid rgba(0, 255, 255, 0.34);
-  background: linear-gradient(180deg, rgba(29, 5, 47, 0.82), rgba(7, 0, 15, 0.9));
-  min-width: 0;
-}
-.mi-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(0, 255, 255, 0.28);
-}
-.mi-panel-head h2 { margin: 4px 0 0; font-size: 16px; }
-.mi-panel-body { padding: 13px; }
-.mi-sections { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.mi-section-button {
-  padding: 7px 9px;
-  border: 1px solid rgba(255, 0, 212, 0.36);
-  background: rgba(18, 0, 28, 0.7);
-  color: #bca6c9;
-  font: inherit;
-  font-size: 8px;
-  cursor: pointer;
-}
-.mi-section-button.active { border-color: #ff00d4; color: #ff76ec; }
-.mi-values { display: grid; gap: 7px; }
-.mi-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.45fr) minmax(160px, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid rgba(104, 66, 126, 0.52);
-  background: rgba(0, 0, 0, 0.28);
-}
-.mi-key { color: #f2b4ff; font-size: 9px; overflow-wrap: anywhere; }
-.mi-input, .mi-raw {
-  width: 100%;
-  border: 1px solid rgba(0, 255, 255, 0.3);
-  border-radius: 0;
-  background: #030008;
-  color: #f5eaff;
-  font: inherit;
-  font-size: 10px;
-}
-.mi-input { min-height: 30px; padding: 6px 8px; }
-.mi-raw {
-  min-height: 480px;
-  resize: vertical;
-  padding: 12px;
-  line-height: 1.55;
-  tab-size: 2;
-  white-space: pre;
-}
-.mi-source { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
-.mi-provenance { color: #877495; font-size: 7px; white-space: nowrap; }
-.mi-new-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.5fr) minmax(160px, 1fr) auto;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed rgba(0, 255, 255, 0.3);
-}
-.mi-diagnostics, .mi-diff { display: grid; gap: 7px; }
-.mi-diagnostic, .mi-diff-entry {
-  padding: 9px;
-  border-left: 2px solid #9a78ae;
-  background: rgba(0, 0, 0, 0.28);
-  color: #c8b6d4;
-  font-size: 9px;
-  line-height: 1.5;
-}
-.mi-diagnostic.error { border-left-color: #ff356f; }
-.mi-diagnostic.warning { border-left-color: #ffd36b; }
-.mi-diagnostic strong, .mi-diff-entry strong { color: #f7eaff; }
-.mi-diff-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
-.mi-diff-pair code { padding: 6px; background: #030008; overflow-wrap: anywhere; }
-.mi-error-box {
-  margin: 10px 0;
-  padding: 10px;
-  border: 1px solid rgba(255, 53, 111, 0.6);
-  background: rgba(45, 0, 18, 0.58);
-  color: #ff91b2;
-  font-size: 9px;
-  line-height: 1.55;
-}
-.mi-empty {
-  padding: 70px 20px;
-  text-align: center;
-  border: 1px dashed rgba(0, 255, 255, 0.3);
-  color: #9d89aa;
-}
-.mi-empty strong { display: block; margin-bottom: 9px; color: #00ffff; font-size: 13px; }
-.mi-footer-state {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 12px;
-}
-@media (max-width: 920px) {
-  .mi-page { padding: 22px 22px 90px; }
-  .mi-header { flex-direction: column; }
-  .mi-runtime { text-align: left; min-width: 0; }
-  .mi-grid { grid-template-columns: 1fr; }
-  .mi-row, .mi-new-row { grid-template-columns: 1fr; }
-  .mi-source { justify-content: flex-start; }
-  .mi-diff-pair { grid-template-columns: 1fr; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mi-page *, .mi-page *::before, .mi-page *::after { transition: none !important; animation: none !important; }
-}
+.mi-page{min-height:100vh;padding:30px 34px 90px;color:#f6eaff;background:radial-gradient(circle at 74% 6%,rgba(255,0,180,.15),transparent 34%),radial-gradient(circle at 12% 70%,rgba(0,255,255,.08),transparent 35%),#07000e;font-family:"Cascadia Mono","Cascadia Code",Consolas,monospace;box-sizing:border-box}.mi-page *{box-sizing:border-box}.mi-header{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;padding-bottom:20px;border-bottom:1px solid rgba(0,255,255,.44)}.mi-kicker,.mi-section-kicker{color:#00ffff;font-size:9px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}.mi-header h1{margin:7px 0 8px;font-size:clamp(25px,3vw,39px);letter-spacing:.02em}.mi-header p,.mi-muted{color:#a996bb;font-size:11px;line-height:1.6}.mi-runtime{min-width:220px;text-align:right}.mi-runtime strong{display:block;margin-top:6px;font-size:12px}.mi-badge{display:inline-flex;align-items:center;min-height:23px;padding:0 8px;border:1px solid rgba(0,255,255,.52);color:#75ffe2;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.mi-badge.warn{color:#ffd36b;border-color:rgba(255,211,107,.58)}.mi-badge.error{color:#ff6b9f;border-color:rgba(255,40,120,.62)}.mi-badge.dirty{color:#ff45ff;border-color:rgba(255,0,255,.58)}.mi-notice{margin:16px 0 0;padding:11px 13px;border:1px solid rgba(117,255,226,.5);background:rgba(0,20,18,.62);color:#baffed;font-size:10px}.mi-notice.error{border-color:rgba(255,40,120,.6);background:rgba(35,0,15,.6);color:#ff8db4}.mi-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;padding:12px;border:1px solid rgba(0,255,255,.32);background:rgba(15,2,28,.86)}.mi-button{min-height:32px;padding:0 12px;border:1px solid #00dbe7;border-radius:0;background:transparent;color:#00f5ff;font:inherit;font-size:8px;font-weight:900;letter-spacing:.08em;cursor:pointer;text-transform:uppercase}.mi-button:hover:not(:disabled),.mi-button.active{color:#050009;background:#00ffff}.mi-button.magenta{border-color:#ff00d4;color:#ff45e1}.mi-button.magenta:hover:not(:disabled),.mi-button.magenta.active{color:#08000a;background:#ff00d4}.mi-button.danger{border-color:#ff356f;color:#ff6b95}.mi-button:disabled{opacity:.35;cursor:not-allowed}.mi-button:focus-visible,.mi-input:focus-visible,.mi-raw:focus-visible{outline:2px solid #ff00ff;outline-offset:2px}.mi-target{flex:1 1 320px;min-width:0;padding:8px 10px;border-left:2px solid #ff00d4;background:rgba(0,0,0,.35);color:#d7c7e2;font-size:9px;overflow-wrap:anywhere}.mi-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,.75fr);gap:12px}.mi-panel{border:1px solid rgba(0,255,255,.34);background:linear-gradient(180deg,rgba(29,5,47,.82),rgba(7,0,15,.9));min-width:0}.mi-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(0,255,255,.28)}.mi-panel-head h2{margin:4px 0 0;font-size:16px}.mi-panel-body{padding:13px}.mi-sections{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.mi-section-button{padding:7px 9px;border:1px solid rgba(255,0,212,.36);background:rgba(18,0,28,.7);color:#bca6c9;font:inherit;font-size:8px;cursor:pointer}.mi-section-button.active{border-color:#ff00d4;color:#ff76ec}.mi-values{display:grid;gap:7px}.mi-row{display:grid;grid-template-columns:minmax(120px,.45fr) minmax(160px,1fr) auto;align-items:center;gap:8px;padding:8px;border:1px solid rgba(104,66,126,.52);background:rgba(0,0,0,.28)}.mi-key{color:#f2b4ff;font-size:9px;overflow-wrap:anywhere}.mi-input,.mi-raw{width:100%;border:1px solid rgba(0,255,255,.3);border-radius:0;background:#030008;color:#f5eaff;font:inherit;font-size:10px}.mi-input{min-height:30px;padding:6px 8px}.mi-raw{min-height:480px;resize:vertical;padding:12px;line-height:1.55;tab-size:2;white-space:pre}.mi-source{display:flex;gap:6px;align-items:center;justify-content:flex-end}.mi-provenance{color:#877495;font-size:7px;white-space:nowrap}.mi-new-row{display:grid;grid-template-columns:minmax(120px,.5fr) minmax(160px,1fr) auto;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(0,255,255,.3)}.mi-diagnostics,.mi-diff{display:grid;gap:7px}.mi-diagnostic,.mi-diff-entry{padding:9px;border-left:2px solid #9a78ae;background:rgba(0,0,0,.28);color:#c8b6d4;font-size:9px;line-height:1.5}.mi-diagnostic.error{border-left-color:#ff356f}.mi-diagnostic.warning{border-left-color:#ffd36b}.mi-diagnostic strong,.mi-diff-entry strong{color:#f7eaff}.mi-diff-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}.mi-diff-pair code{padding:6px;background:#030008;overflow-wrap:anywhere}.mi-error-box{margin:10px 0;padding:10px;border:1px solid rgba(255,53,111,.6);background:rgba(45,0,18,.58);color:#ff91b2;font-size:9px;line-height:1.55}.mi-empty{padding:70px 20px;text-align:center;border:1px dashed rgba(0,255,255,.3);color:#9d89aa}.mi-empty strong{display:block;margin-bottom:9px;color:#00ffff;font-size:13px}.mi-footer-state{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}@media(max-width:920px){.mi-page{padding:22px 22px 90px}.mi-header{flex-direction:column}.mi-runtime{text-align:left;min-width:0}.mi-grid{grid-template-columns:1fr}.mi-row,.mi-new-row{grid-template-columns:1fr}.mi-source{justify-content:flex-start}.mi-diff-pair{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.mi-page *,.mi-page *::before,.mi-page *::after{transition:none!important;animation:none!important}}
 "#;
 
 #[derive(Debug, Clone)]
@@ -296,7 +60,10 @@ fn load_document(path: PathBuf, mode: ConfigWriteMode) -> Result<ConfigUiState, 
     } else if mode == ConfigWriteMode::Managed {
         "[*]\r\n".to_string()
     } else {
-        return Err(format!("Configuration file does not exist: {}", path.display()));
+        return Err(format!(
+            "Configuration file does not exist: {}",
+            path.display()
+        ));
     };
 
     let session = ModelsIniEditorSession::load(source).map_err(|error| error.to_string())?;
@@ -313,7 +80,10 @@ fn load_document(path: PathBuf, mode: ConfigWriteMode) -> Result<ConfigUiState, 
         target: Some(path),
         write_mode: Some(mode),
         selected_section,
-        notice: Some((true, "Configuration loaded into one canonical editor session.".into())),
+        notice: Some((
+            true,
+            "Configuration loaded into one canonical editor session.".into(),
+        )),
         ..ConfigUiState::default()
     })
 }
@@ -357,7 +127,10 @@ fn new_external(mut state: Signal<ConfigUiState>) {
                 target: Some(path),
                 write_mode: Some(ConfigWriteMode::External),
                 selected_section: "*".into(),
-                notice: Some((true, "New external configuration prepared; no file has been written yet.".into())),
+                notice: Some((
+                    true,
+                    "New external configuration prepared; no file has been written yet.".into(),
+                )),
                 ..ConfigUiState::default()
             });
         }
@@ -395,7 +168,10 @@ fn apply_raw(mut state: Signal<ConfigUiState>, source: String) {
     match session.apply_raw_edit(source) {
         Ok(()) => current.notice = None,
         Err(error) => {
-            current.notice = Some((false, format!("Raw draft retained with parse error: {error}")))
+            current.notice = Some((
+                false,
+                format!("Raw draft retained with parse error: {error}"),
+            ))
         }
     }
 }
@@ -450,7 +226,10 @@ fn revert_loaded(mut state: Signal<ConfigUiState>) {
     let mut current = state.write();
     if let Some(session) = current.session.as_mut() {
         session.revert_to_loaded();
-        current.notice = Some((true, "Reverted to the exact source loaded from disk.".into()));
+        current.notice = Some((
+            true,
+            "Reverted to the exact source loaded from disk.".into(),
+        ));
     }
 }
 
@@ -496,12 +275,9 @@ fn save_config(mut state: Signal<ConfigUiState>) {
     let editor_mode = session.mode();
     let result = match mode {
         ConfigWriteMode::Managed => write_managed_models_ini(&paths, &source, &validation),
-        ConfigWriteMode::External => write_external_models_ini(
-            target,
-            &source,
-            &validation,
-            DEFAULT_BACKUP_RETENTION,
-        ),
+        ConfigWriteMode::External => {
+            write_external_models_ini(target, &source, &validation, DEFAULT_BACKUP_RETENTION)
+        }
     };
 
     match result {
@@ -575,8 +351,9 @@ fn display_effective(value: &Option<crate::models_ini_validation::ConfigValueSna
 
 fn validation_for(snapshot: &ConfigUiState) -> Option<ValidationReport> {
     let session = snapshot.session.as_ref()?;
+    let installation = load_installation();
     session
-        .validation(&snapshot.selected_section, load_installation().as_ref())
+        .validation(&snapshot.selected_section, installation.as_ref())
         .ok()
 }
 
@@ -597,7 +374,10 @@ pub fn ModelsIniView() -> Element {
     let diff = diff_for(&snapshot);
     let can_apply = snapshot.session.is_some()
         && validation.as_ref().is_some_and(ValidationReport::can_apply)
-        && snapshot.session.as_ref().is_some_and(|session| session.raw_error().is_none());
+        && snapshot
+            .session
+            .as_ref()
+            .is_some_and(|session| session.raw_error().is_none());
 
     let sections = snapshot
         .session
@@ -620,6 +400,13 @@ pub fn ModelsIniView() -> Element {
         .session
         .as_ref()
         .and_then(|session| session.effective_config(&snapshot.selected_section).ok());
+    let target_label = snapshot.target.as_ref().map(|target| {
+        format!(
+            "{:?} · {}",
+            snapshot.write_mode.unwrap_or(ConfigWriteMode::External),
+            target.display()
+        )
+    });
 
     rsx! {
         style { dangerous_inner_html: MODELS_INI_CSS }
@@ -654,8 +441,8 @@ pub fn ModelsIniView() -> Element {
                 button { class: "mi-button", onclick: move |_| new_external(state), "NEW EXTERNAL" }
                 button { class: "mi-button", onclick: move |_| open_managed(state), "OPEN MANAGED" }
                 div { class: "mi-target",
-                    if let Some(target) = snapshot.target.as_ref() {
-                        "{snapshot.write_mode.map(|mode| format!(\"{mode:?}\")).unwrap_or_default()} · {target.display()}"
+                    if let Some(label) = target_label.as_ref() {
+                        "{label}"
                     } else {
                         "No configuration loaded. Choose an existing external file, a new external destination, or managed config."
                     }
