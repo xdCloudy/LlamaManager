@@ -224,11 +224,8 @@ impl<B: GpuBackend> GpuTelemetryCollector<B> {
             Err(error) => return self.provider_failure(error, captured_at_unix_ms),
         };
 
-        let mut adapters = Vec::with_capacity(
-            self.previous
-                .len()
-                .max(backend_snapshot.adapters.len()),
-        );
+        let mut adapters =
+            Vec::with_capacity(self.previous.len().max(backend_snapshot.adapters.len()));
         let mut seen = HashSet::new();
 
         for backend_adapter in backend_snapshot.adapters {
@@ -258,10 +255,8 @@ impl<B: GpuBackend> GpuTelemetryCollector<B> {
             .cloned()
             .map(|adapter| (adapter.identity.key(), adapter))
             .collect();
-        self.previous_provider_count = Some((
-            backend_snapshot.reported_adapter_count,
-            captured_at_unix_ms,
-        ));
+        self.previous_provider_count =
+            Some((backend_snapshot.reported_adapter_count, captured_at_unix_ms));
 
         GpuTelemetrySnapshot {
             captured_at_unix_ms,
@@ -443,36 +438,16 @@ fn stale_adapter(
             sampled_at_unix_ms,
             reason,
         ),
-        memory_used_bytes: stale_reading(
-            &previous.memory_used_bytes,
-            sampled_at_unix_ms,
-            reason,
-        ),
-        memory_total_bytes: stale_reading(
-            &previous.memory_total_bytes,
-            sampled_at_unix_ms,
-            reason,
-        ),
+        memory_used_bytes: stale_reading(&previous.memory_used_bytes, sampled_at_unix_ms, reason),
+        memory_total_bytes: stale_reading(&previous.memory_total_bytes, sampled_at_unix_ms, reason),
         temperature_celsius: stale_reading(
             &previous.temperature_celsius,
             sampled_at_unix_ms,
             reason,
         ),
-        graphics_clock_mhz: stale_reading(
-            &previous.graphics_clock_mhz,
-            sampled_at_unix_ms,
-            reason,
-        ),
-        memory_clock_mhz: stale_reading(
-            &previous.memory_clock_mhz,
-            sampled_at_unix_ms,
-            reason,
-        ),
-        power_milliwatts: stale_reading(
-            &previous.power_milliwatts,
-            sampled_at_unix_ms,
-            reason,
-        ),
+        graphics_clock_mhz: stale_reading(&previous.graphics_clock_mhz, sampled_at_unix_ms, reason),
+        memory_clock_mhz: stale_reading(&previous.memory_clock_mhz, sampled_at_unix_ms, reason),
+        power_milliwatts: stale_reading(&previous.power_milliwatts, sampled_at_unix_ms, reason),
     }
 }
 
@@ -548,18 +523,13 @@ mod platform {
     type NvmlInitV2 = unsafe extern "C" fn() -> NvmlReturn;
     type NvmlShutdown = unsafe extern "C" fn() -> NvmlReturn;
     type NvmlDeviceGetCountV2 = unsafe extern "C" fn(*mut u32) -> NvmlReturn;
-    type NvmlDeviceGetHandleByIndexV2 =
-        unsafe extern "C" fn(u32, *mut NvmlDevice) -> NvmlReturn;
-    type NvmlDeviceGetString =
-        unsafe extern "C" fn(NvmlDevice, *mut c_char, u32) -> NvmlReturn;
+    type NvmlDeviceGetHandleByIndexV2 = unsafe extern "C" fn(u32, *mut NvmlDevice) -> NvmlReturn;
+    type NvmlDeviceGetString = unsafe extern "C" fn(NvmlDevice, *mut c_char, u32) -> NvmlReturn;
     type NvmlDeviceGetUtilizationRates =
         unsafe extern "C" fn(NvmlDevice, *mut NvmlUtilization) -> NvmlReturn;
-    type NvmlDeviceGetMemoryInfo =
-        unsafe extern "C" fn(NvmlDevice, *mut NvmlMemory) -> NvmlReturn;
-    type NvmlDeviceGetTemperature =
-        unsafe extern "C" fn(NvmlDevice, u32, *mut u32) -> NvmlReturn;
-    type NvmlDeviceGetClockInfo =
-        unsafe extern "C" fn(NvmlDevice, u32, *mut u32) -> NvmlReturn;
+    type NvmlDeviceGetMemoryInfo = unsafe extern "C" fn(NvmlDevice, *mut NvmlMemory) -> NvmlReturn;
+    type NvmlDeviceGetTemperature = unsafe extern "C" fn(NvmlDevice, u32, *mut u32) -> NvmlReturn;
+    type NvmlDeviceGetClockInfo = unsafe extern "C" fn(NvmlDevice, u32, *mut u32) -> NvmlReturn;
     type NvmlDeviceGetPowerUsage = unsafe extern "C" fn(NvmlDevice, *mut u32) -> NvmlReturn;
 
     #[repr(C)]
@@ -636,19 +606,17 @@ mod platform {
 
             let result = (|| {
                 let init = required_symbol::<NvmlInitV2>(module_value, b"nvmlInit_v2\0")?;
-                let shutdown =
-                    required_symbol::<NvmlShutdown>(module_value, b"nvmlShutdown\0")?;
+                let shutdown = required_symbol::<NvmlShutdown>(module_value, b"nvmlShutdown\0")?;
                 let device_get_count_v2 = required_symbol::<NvmlDeviceGetCountV2>(
                     module_value,
                     b"nvmlDeviceGetCount_v2\0",
                 )?;
-                let device_get_handle_by_index_v2 = required_symbol::<
-                    NvmlDeviceGetHandleByIndexV2,
-                >(module_value, b"nvmlDeviceGetHandleByIndex_v2\0")?;
-                let device_get_uuid = required_symbol::<NvmlDeviceGetString>(
+                let device_get_handle_by_index_v2 = required_symbol::<NvmlDeviceGetHandleByIndexV2>(
                     module_value,
-                    b"nvmlDeviceGetUUID\0",
+                    b"nvmlDeviceGetHandleByIndex_v2\0",
                 )?;
+                let device_get_uuid =
+                    required_symbol::<NvmlDeviceGetString>(module_value, b"nvmlDeviceGetUUID\0")?;
 
                 // SAFETY: the symbol was resolved from nvml.dll with the documented signature.
                 let init_result = unsafe { init() };
@@ -919,10 +887,7 @@ mod platform {
         if result == NVML_SUCCESS {
             BackendMetric::Live(value)
         } else if matches!(result, NVML_ERROR_NOT_SUPPORTED | NVML_ERROR_NO_PERMISSION) {
-            BackendMetric::Unavailable(format!(
-                "{api} is unavailable: {}",
-                nvml_error_name(result)
-            ))
+            BackendMetric::Unavailable(format!("{api} is unavailable: {}", nvml_error_name(result)))
         } else {
             BackendMetric::Error(format!("{api} failed: {}", nvml_error_name(result)))
         }
