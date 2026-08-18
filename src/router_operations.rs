@@ -670,7 +670,7 @@ pub enum RouterOperationError {
     #[error("router operation {path} returned HTTP {status_code}: {body_excerpt}")]
     HttpFailure {
         path: String,
-        status_code: u16,
+        status_code,
         body_excerpt: String,
     },
 
@@ -868,10 +868,7 @@ fn registry_model<'a>(
 }
 
 fn is_ready(phase: &RouterModelPhase) -> bool {
-    matches!(
-        phase,
-        RouterModelPhase::Loaded | RouterModelPhase::Sleeping
-    )
+    matches!(phase, RouterModelPhase::Loaded | RouterModelPhase::Sleeping)
 }
 
 fn is_running(phase: &RouterModelPhase) -> bool {
