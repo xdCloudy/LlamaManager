@@ -2,7 +2,6 @@ use std::{
     collections::BTreeMap,
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
-    path::PathBuf,
     thread,
     time::Duration,
 };
@@ -696,7 +695,7 @@ fn refresh_persisted_runtime(mut state: RouterUiSignal) {
 
 fn refresh_router(mut state: RouterUiSignal) {
     let snapshot = state.read().clone();
-    let Some(installation) = snapshot.installation else {
+    let Some(installation) = snapshot.installation.clone() else {
         state.write().notice = Some((
             false,
             "No persisted llama.cpp installation is selected. Select one in CORE LAB first.".into(),
