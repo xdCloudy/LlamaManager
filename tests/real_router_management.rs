@@ -238,7 +238,8 @@ fn validates_preferred_model_restart_and_reconnect_reconciliation() {
     );
 
     let mut second_process = ChildGuard::spawn(&server.path, &runtime_root, &argv);
-    let restarted_snapshot = wait_for_snapshot(&mut second_process, &installation, &endpoint, &store);
+    let restarted_snapshot =
+        wait_for_snapshot(&mut second_process, &installation, &endpoint, &store);
     assert!(
         restarted_snapshot
             .models
@@ -250,14 +251,23 @@ fn validates_preferred_model_restart_and_reconnect_reconciliation() {
     assert_eq!(tracker.freshness(), RouterSnapshotFreshness::Live);
     let after_restart = verify_preferred_model(&preferences, &tracker);
     assert!(
-        !matches!(after_restart, PreferredModelVerification::NeedsLiveReconciliation),
+        !matches!(
+            after_restart,
+            PreferredModelVerification::NeedsLiveReconciliation
+        ),
         "fresh restart evidence must replace the stale snapshot"
     );
 
     let restart_phase = tracker
         .current
         .as_ref()
-        .and_then(|snapshot| snapshot.registry.models.iter().find(|model| model.id == model_id))
+        .and_then(|snapshot| {
+            snapshot
+                .registry
+                .models
+                .iter()
+                .find(|model| model.id == model_id)
+        })
         .map(|model| format!("{:?}", model.status.phase));
     let evidence = json!({
         "github_sha": env::var("GITHUB_SHA").ok(),
