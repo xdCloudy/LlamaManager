@@ -253,3 +253,13 @@ The Benchmark view showed the exact real `llama-bench.exe` invocation, reported 
 The operator-captured evidence and integrity hashes are recorded in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
 
 This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is **C5 — Complete**.
+
+## Workflow cleanup
+
+The active workflow set is intentionally limited to:
+
+- `ci.yml`
+- `release.yml`
+- `real-runtime-validation.yml`
+
+The real-runtime workflow is a permanent reproducible regression/evidence gate, not a temporary self-modifying validation workflow.
