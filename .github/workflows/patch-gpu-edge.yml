@@ -1,0 +1,195 @@
+name: Patch GPU telemetry edge cases
+
+on:
+  push:
+    branches:
+      - agent/m6-gpu-telemetry
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/m6-gpu-telemetry
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply reviewed edge-case patch
+        shell: pwsh
+        run: |
+          $path = 'src/gpu_telemetry.rs'
+          $text = Get-Content -LiteralPath $path -Raw
+
+          $oldCollector = @'
+        for backend_adapter in backend_snapshot.adapters {
+            let key = backend_adapter.identity.key();
+            let previous = self.previous.get(&key);
+            seen.insert(key);
+            adapters.push(convert_adapter(
+                backend_adapter,
+                previous,
+                captured_at_unix_ms,
+            ));
+        }
+'@
+          $newCollector = @'
+        for backend_adapter in backend_snapshot.adapters {
+            let key = backend_adapter.identity.key();
+            let previous_match = self.previous.get_key_value(&key).or_else(|| {
+                self.previous.iter().find(|(_, previous)| {
+                    previous.identity.vendor == backend_adapter.identity.vendor
+                        && previous.identity.index == backend_adapter.identity.index
+                        && (previous.identity.uuid.is_none()
+                            || backend_adapter.identity.uuid.is_none())
+                })
+            });
+            let previous = if let Some((previous_key, previous)) = previous_match {
+                seen.insert(previous_key.clone());
+                Some(previous)
+            } else {
+                seen.insert(key);
+                None
+            };
+            adapters.push(convert_adapter(
+                backend_adapter,
+                previous,
+                captured_at_unix_ms,
+            ));
+        }
+'@
+          if (-not $text.Contains($oldCollector)) { throw 'collector replacement anchor not found' }
+          $text = $text.Replace($oldCollector, $newCollector)
+
+          $oldHandle = @'
+                if result != NVML_SUCCESS {
+                    return Err(provider_error(
+                        result,
+                        &format!("nvmlDeviceGetHandleByIndex_v2 failed for adapter {index}"),
+                    ));
+                }
+                adapters.push(self.sample_adapter(index, device));
+'@
+          $newHandle = @'
+                if result == NVML_ERROR_NO_PERMISSION {
+                    adapters.push(Self::unavailable_adapter(
+                        index,
+                        format!(
+                            "nvmlDeviceGetHandleByIndex_v2 has no permission for adapter {index}: {}",
+                            nvml_error_name(result)
+                        ),
+                    ));
+                    continue;
+                }
+                if result != NVML_SUCCESS {
+                    return Err(provider_error(
+                        result,
+                        &format!("nvmlDeviceGetHandleByIndex_v2 failed for adapter {index}"),
+                    ));
+                }
+                adapters.push(self.sample_adapter(index, device));
+'@
+          if (-not $text.Contains($oldHandle)) { throw 'handle replacement anchor not found' }
+          $text = $text.Replace($oldHandle, $newHandle)
+
+          $sampleAnchor = @'
+        fn sample_adapter(&self, index: u32, device: NvmlDevice) -> BackendAdapterSample {
+'@
+          $helper = @'
+        fn unavailable_adapter(index: u32, reason: String) -> BackendAdapterSample {
+            BackendAdapterSample {
+                identity: GpuAdapterIdentity {
+                    vendor: "nvidia".to_owned(),
+                    index,
+                    uuid: None,
+                    name: None,
+                    stable_for_evidence: false,
+                    identity_note: Some(reason.clone()),
+                },
+                gpu_utilization_percent: BackendMetric::Unavailable(reason.clone()),
+                memory_utilization_percent: BackendMetric::Unavailable(reason.clone()),
+                memory_used_bytes: BackendMetric::Unavailable(reason.clone()),
+                memory_total_bytes: BackendMetric::Unavailable(reason.clone()),
+                temperature_celsius: BackendMetric::Unavailable(reason.clone()),
+                graphics_clock_mhz: BackendMetric::Unavailable(reason.clone()),
+                memory_clock_mhz: BackendMetric::Unavailable(reason.clone()),
+                power_milliwatts: BackendMetric::Unavailable(reason),
+            }
+        }
+
+        fn sample_adapter(&self, index: u32, device: NvmlDevice) -> BackendAdapterSample {
+'@
+          if (-not $text.Contains($sampleAnchor)) { throw 'adapter helper anchor not found' }
+          $text = $text.Replace($sampleAnchor, $helper)
+
+          $unitAnchor = @'
+        assert_eq!(
+            result.adapters[0].gpu_utilization_percent.live_value(),
+            Some(&25)
+        );
+'@
+          $unitTests = @'
+        assert_eq!(
+            result.adapters[0].gpu_utilization_percent.live_value(),
+            Some(&25)
+        );
+        assert_eq!(
+            result.adapters[0].gpu_utilization_percent.unit,
+            GpuTelemetryUnit::Percent
+        );
+        assert_eq!(
+            result.adapters[0].memory_utilization_percent.unit,
+            GpuTelemetryUnit::Percent
+        );
+        assert_eq!(
+            result.adapters[0].memory_used_bytes.unit,
+            GpuTelemetryUnit::Bytes
+        );
+        assert_eq!(
+            result.adapters[0].memory_total_bytes.unit,
+            GpuTelemetryUnit::Bytes
+        );
+        assert_eq!(
+            result.adapters[0].temperature_celsius.unit,
+            GpuTelemetryUnit::Celsius
+        );
+        assert_eq!(
+            result.adapters[0].graphics_clock_mhz.unit,
+            GpuTelemetryUnit::Megahertz
+        );
+        assert_eq!(
+            result.adapters[0].memory_clock_mhz.unit,
+            GpuTelemetryUnit::Megahertz
+        );
+        assert_eq!(
+            result.adapters[0].power_milliwatts.unit,
+            GpuTelemetryUnit::Milliwatts
+        );
+        assert!(result.adapters[0].gpu_utilization_percent.live_value() <= Some(&100));
+        assert!(result.adapters[0].memory_utilization_percent.live_value() <= Some(&100));
+        assert!(result.adapters[0].memory_used_bytes.live_value()
+            <= result.adapters[0].memory_total_bytes.live_value());
+'@
+          if (-not $text.Contains($unitAnchor)) { throw 'unit test anchor not found' }
+          $text = $text.Replace($unitAnchor, $unitTests)
+
+          Set-Content -LiteralPath $path -Value $text -Encoding utf8 -NoNewline
+          cargo fmt --all
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- src/gpu_telemetry.rs)) {
+            Write-Host 'No source changes produced.'
+            exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/gpu_telemetry.rs
+          git commit -m 'fix(telemetry): isolate inaccessible NVML adapters'
+          git push origin HEAD:agent/m6-gpu-telemetry
