@@ -1,10 +1,8 @@
 use llamamanager::telemetry_alerts::{
-    AlertComparator, AlertEngine, AlertEventKind, AlertPresentationState, AlertRule,
-    AlertSeverity, AlertThreshold, AlertValueRange,
+    AlertComparator, AlertEngine, AlertEventKind, AlertPresentationState, AlertRule, AlertSeverity,
+    AlertThreshold, AlertValueRange,
 };
-use llamamanager::telemetry_history::{
-    SampleSource, SeriesIdentity, SeriesKey, TimeSeriesSample,
-};
+use llamamanager::telemetry_history::{SampleSource, SeriesIdentity, SeriesKey, TimeSeriesSample};
 
 fn key() -> SeriesKey {
     SeriesKey::new(
@@ -86,7 +84,9 @@ fn threshold_edit_preserves_active_state_until_new_clear_policy_is_satisfied() {
         .unwrap()
         .remove(0);
     assert_eq!(resolved.state, AlertPresentationState::Inactive);
-    let event = resolved.transition.expect("active alert should resolve truthfully");
+    let event = resolved
+        .transition
+        .expect("active alert should resolve truthfully");
     assert_eq!(event.kind, AlertEventKind::Resolved);
     assert_eq!(event.evidence.trigger_threshold, 90.0);
     assert_eq!(event.evidence.clear_threshold, 85.0);
