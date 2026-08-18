@@ -842,10 +842,19 @@ mod tests {
             "generation_settings":{"speculative.types":"draft"}
         }"#;
         let snapshot = parse_llama_cpp_completion(body, observation()).unwrap();
-        assert_eq!(snapshot.speculative_generated_tokens.live_value(), Some(&12));
+        assert_eq!(
+            snapshot.speculative_generated_tokens.live_value(),
+            Some(&12)
+        );
         assert_eq!(snapshot.speculative_accepted_tokens.live_value(), Some(&9));
-        assert_eq!(snapshot.speculative_acceptance_rate.live_value(), Some(&0.75));
-        assert_eq!(snapshot.speculative_mean_run_length.live_value(), Some(&2.5));
+        assert_eq!(
+            snapshot.speculative_acceptance_rate.live_value(),
+            Some(&0.75)
+        );
+        assert_eq!(
+            snapshot.speculative_mean_run_length.live_value(),
+            Some(&2.5)
+        );
         assert!(matches!(
             &snapshot.mtp_generated_tokens.state,
             TelemetryState::Unavailable { .. }
@@ -882,11 +891,9 @@ mod tests {
 
     #[test]
     fn missing_and_null_metrics_are_unavailable_not_zero() {
-        let snapshot = parse_llama_cpp_completion(
-            r#"{"timings":{"prompt_per_second":null}}"#,
-            observation(),
-        )
-        .unwrap();
+        let snapshot =
+            parse_llama_cpp_completion(r#"{"timings":{"prompt_per_second":null}}"#, observation())
+                .unwrap();
         assert!(matches!(
             &snapshot.prompt_tps.state,
             TelemetryState::Unavailable { .. }
