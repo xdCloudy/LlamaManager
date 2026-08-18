@@ -856,8 +856,8 @@ pub fn ServerLifecycleView() -> Element {
                         div { class: "sv-command",
                             strong { "PREVIEW\n" }
                             match preview.as_ref() {
-                                Ok(command) => "{command}",
-                                Err(error) => "BLOCKED: {error}",
+                                Ok(command) => command.clone(),
+                                Err(error) => format!("BLOCKED: {error}"),
                             }
                         }
                         if let Some(last) = snapshot.last_command.as_ref() {
