@@ -38,20 +38,27 @@ pub struct ServerLogEntry {
 
 impl ServerLogEntry {
     /// Presentation-only severity. Lifecycle success/failure is never inferred from log text.
+    ///
+    /// `llama.cpp` writes its normal diagnostic/startup/inference log stream to stderr, so the
+    /// stream itself is not a severity signal. Only explicit severity/error words in the message
+    /// are promoted above Info.
     pub fn presentation_severity(&self) -> ServerLogSeverity {
         let lower = self.text.to_ascii_lowercase();
-        if self.stream == ServerLogStream::Stderr
-            && (lower.contains("fatal") || lower.contains("panic"))
-        {
+        if contains_log_word(&lower, &["fatal", "panic", "panicked"]) {
             ServerLogSeverity::Fatal
-        } else if lower.contains("warning") || lower.contains("warn:") {
+        } else if contains_log_word(&lower, &["warning", "warn"]) {
             ServerLogSeverity::Warning
-        } else if self.stream == ServerLogStream::Stderr {
+        } else if contains_log_word(&lower, &["error", "failed", "failure"]) {
             ServerLogSeverity::Error
         } else {
             ServerLogSeverity::Info
         }
     }
+}
+
+fn contains_log_word(text: &str, words: &[&str]) -> bool {
+    text.split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+        .any(|token| words.contains(&token))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -567,6 +574,30 @@ mod tests {
         assert!(!text.contains("Bearer tok-"));
         assert!(text.contains("<redacted>"));
         assert!(capture.snapshot().disk_error.is_none());
+    }
+
+    #[test]
+    fn presentation_severity_uses_message_content_not_stderr_stream() {
+        let logs = ServerLogBuffer::new(2048);
+        let startup = logs.push(
+            1,
+            ServerLogStream::Stderr,
+            "llama_server: listening on http://127.0.0.1:8080",
+        );
+        let inference = logs.push(
+            1,
+            ServerLogStream::Stderr,
+            "slot print_timing: prompt eval time = 32.45 ms / 3 tokens",
+        );
+        let warning = logs.push(1, ServerLogStream::Stderr, "warning: warmup fallback enabled");
+        let error = logs.push(1, ServerLogStream::Stderr, "error: failed to load model");
+        let fatal = logs.push(1, ServerLogStream::Stderr, "fatal: model load failed");
+
+        assert_eq!(startup.presentation_severity(), ServerLogSeverity::Info);
+        assert_eq!(inference.presentation_severity(), ServerLogSeverity::Info);
+        assert_eq!(warning.presentation_severity(), ServerLogSeverity::Warning);
+        assert_eq!(error.presentation_severity(), ServerLogSeverity::Error);
+        assert_eq!(fatal.presentation_severity(), ServerLogSeverity::Fatal);
     }
 
     #[test]
