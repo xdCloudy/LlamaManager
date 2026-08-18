@@ -6,6 +6,7 @@ pub mod gguf;
 pub mod llama;
 pub mod model_library;
 pub mod model_store;
+pub mod models_ini;
 pub mod multimodal;
 pub mod paths;
 pub mod persistence;
