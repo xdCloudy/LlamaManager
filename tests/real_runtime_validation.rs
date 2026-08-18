@@ -3,8 +3,13 @@
 use std::{env, fs, path::PathBuf};
 
 use llamamanager::{
-    benchmark::run_default_benchmark, error::LlamaManagerError, gguf::inspect_gguf,
-    llama::inspect_installation, persistence::Database,
+    benchmark::{
+        BenchmarkCancellation, run_default_benchmark, run_default_benchmark_cancellable,
+    },
+    error::LlamaManagerError,
+    gguf::inspect_gguf,
+    llama::inspect_installation,
+    persistence::Database,
 };
 use serde_json::json;
 
@@ -147,6 +152,29 @@ fn validates_real_windows_runtime_end_to_end() {
         Err(LlamaManagerError::ProcessFailed { .. })
     ));
 
+    // Cancellation is also exercised against the real upstream executable.
+    // The token is set before entry, but the product path intentionally spawns
+    // the child first and then observes cancellation while supervising it.
+    let cancellation = BenchmarkCancellation::new();
+    cancellation.cancel();
+    let interruption = match run_default_benchmark_cancellable(&installation, &model, &cancellation)
+    {
+        Err(LlamaManagerError::BenchmarkInterrupted {
+            program,
+            code,
+            stdout,
+            stderr,
+        }) => json!({
+            "program": program,
+            "exit_code": code,
+            "stdout": stdout,
+            "stderr": stderr,
+            "truthful_state": "interrupted"
+        }),
+        Ok(_) => panic!("cancelled real llama-bench must never become a successful run"),
+        Err(other) => panic!("expected BenchmarkInterrupted, got {other:?}"),
+    };
+
     fs::write(
         evidence_dir.join("installation.json"),
         serde_json::to_vec_pretty(&installation).unwrap(),
@@ -165,6 +193,11 @@ fn validates_real_windows_runtime_end_to_end() {
     fs::write(
         evidence_dir.join("benchmark-run.json"),
         serde_json::to_vec_pretty(&run).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        evidence_dir.join("benchmark-interruption.json"),
+        serde_json::to_vec_pretty(&interruption).unwrap(),
     )
     .unwrap();
 
@@ -202,7 +235,8 @@ fn validates_real_windows_runtime_end_to_end() {
         "negative_corrupt_gguf_rejected": true,
         "negative_missing_gguf_rejected": true,
         "negative_non_file_gguf_rejected": true,
-        "negative_benchmark_nonzero_typed": true
+        "negative_benchmark_nonzero_typed": true,
+        "benchmark_interruption_typed_and_evidenced": true
     });
     fs::write(
         evidence_dir.join("summary.json"),
