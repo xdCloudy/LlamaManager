@@ -2,6 +2,40 @@
 
 ## Current tranche
 
+Milestone 3 is **C5 — Complete** with a verified real Windows `models.ini` parser/editor/write/generator workflow:
+
+```text
+open existing or managed models.ini
+→ parse losslessly with comments/unknown keys/line endings retained
+→ compute [*] inheritance and per-model override provenance
+→ edit through one canonical STRUCTURED/RAW document
+→ validate against selected llama.cpp capability evidence
+→ inspect effective BEFORE/AFTER diff
+→ block malformed/unsafe apply
+→ save managed/external config through backup + safe replace
+→ restore prior config when required
+→ generate evidence-backed profiles through the same validation/write path
+→ reopen/persist state across restart
+→ remain usable with Unicode/spaces and long comment-heavy files
+```
+
+Rendered CONFIG LAB implementation: PR #119, merge commit `0059744ba69a49dfd892b8b72e1601053b6b02e4`.
+
+Interactive acceptance fixture hardening: PR #120, merge commit `fa63989656a364e8ea48c4c31e380bbf4bf1f90d`.
+
+Interactive QA found one PRE-APPLY EVIDENCE wrapping defect; PR #121, merge commit `35dd7e1ad27263fc6d00d7b61c90fc31801f3ac2`, fixed containment and passed strict Windows CI run `32102022938`.
+
+The repository owner completed the full A–E interactive checklist: structured diff, raw parse-error/apply-block, safe save+restore, managed restart persistence, and long-config/narrow-layout responsiveness. The owner accepted the resulting UI as usable and explicitly deferred further cosmetic polish.
+
+Full closure evidence: `docs/evidence/M3_MODELS_INI_2026-08-18.md`, issues #26/#29, and `docs/WORKLOG.md`.
+
+### M3 limitations retained explicitly
+
+- Remaining cosmetic UI polish that does not affect correctness, truthfulness, safety or usability is deferred to later product-polish work.
+- No known fake-success, destructive-write, parser/editor divergence or data-loss defect remains open for M3 acceptance.
+
+## Previous tranche — M2
+
 Milestone 2 is **C5 — Complete** with a verified real Windows model-library and compatibility workflow:
 
 ```text
@@ -42,7 +76,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M2's final implementation commit `a504eb6a1181dbcccf7b0a4191d5a0200607a463` passed the complete pipeline in run `32098153891`.
+It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M3's final UI-fix commit `5b7f468ed4b238a7e7fa037612df0a9cdf2130f7` passed the complete PR pipeline in run `32102022938` before merge as `35dd7e1ad27263fc6d00d7b61c90fc31801f3ac2`.
+
+M2's final implementation commit `a504eb6a1181dbcccf7b0a4191d5a0200607a463` passed the complete pipeline in run `32098153891`.
 
 For the prior M1 runtime tranche, source commit `5a5ebb3fad92f7a25ad4f1f38822d03a48214e30` passed standard CI run `32094641702`, and permanent real Windows runtime run `32094641715` passed the pinned llama.cpp/GGUF/benchmark checks plus real `llama-server` readiness and minimal inference validation.
 
