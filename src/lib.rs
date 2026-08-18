@@ -14,3 +14,4 @@ pub mod models_ini_validation;
 pub mod multimodal;
 pub mod paths;
 pub mod persistence;
+pub mod profile_generator;
