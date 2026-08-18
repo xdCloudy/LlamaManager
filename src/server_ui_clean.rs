@@ -326,7 +326,10 @@ fn run_start(mut state: ServerStateSignal) {
         let mut supervisor = match supervisor.lock() {
             Ok(supervisor) => supervisor,
             Err(_) => {
-                fail_start(state, "Server process supervisor mutex was poisoned.".into());
+                fail_start(
+                    state,
+                    "Server process supervisor mutex was poisoned.".into(),
+                );
                 return;
             }
         };
@@ -479,9 +482,9 @@ fn spawn_process_monitor(
                 Err(_) => {
                     let mut current = state.write();
                     current.operation = ServerOperation::Idle;
-                    current
-                        .lifecycle
-                        .mark_failed("Server process supervisor mutex was poisoned while monitoring.");
+                    current.lifecycle.mark_failed(
+                        "Server process supervisor mutex was poisoned while monitoring.",
+                    );
                     current.notice = Some((
                         false,
                         "Server process supervisor mutex was poisoned while monitoring.".into(),
@@ -638,7 +641,10 @@ fn run_force_kill(mut state: ServerStateSignal) {
             .process_mut()
             .and_then(|process| process.force_kill()),
         Err(_) => {
-            stop_failed(state, "Server process supervisor mutex was poisoned.".into());
+            stop_failed(
+                state,
+                "Server process supervisor mutex was poisoned.".into(),
+            );
             return;
         }
     };
