@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     ffi::OsString,
-    io,
+    io::{self, BufRead, BufReader, Read},
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
     thread,
@@ -10,7 +10,12 @@ use std::{
 
 use thiserror::Error;
 
-use crate::server_command::ServerLaunchSpec;
+use crate::{
+    server_command::ServerLaunchSpec,
+    server_logs::{
+        DEFAULT_SERVER_LOG_RETENTION_BYTES, ServerLogCapture, ServerLogSnapshot, ServerLogStream,
+    },
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedProcessIdentity {
@@ -67,6 +72,9 @@ pub enum ProcessSupervisorError {
         source: io::Error,
     },
 
+    #[error("managed process pid {pid} did not expose its configured {stream} pipe")]
+    LogPipe { pid: u32, stream: &'static str },
+
     #[error("failed to inspect managed process pid {pid}: {source}")]
     Inspect {
         pid: u32,
@@ -113,11 +121,20 @@ pub struct ManagedServerProcess {
     identity: ManagedProcessIdentity,
     job: PlatformJob,
     exit_evidence: Option<ProcessExitEvidence>,
+    logs: ServerLogCapture,
 }
 
 impl ManagedServerProcess {
     pub fn identity(&self) -> &ManagedProcessIdentity {
         &self.identity
+    }
+
+    pub fn log_snapshot(&self) -> ServerLogSnapshot {
+        self.logs.snapshot()
+    }
+
+    pub fn log_capture(&self) -> ServerLogCapture {
+        self.logs.clone()
     }
 
     pub fn state(&mut self) -> Result<ManagedProcessState, ProcessSupervisorError> {
@@ -249,7 +266,18 @@ impl ServerProcessSupervisor {
         &mut self,
         spec: &ServerLaunchSpec,
     ) -> Result<&ManagedProcessIdentity, ProcessSupervisorError> {
-        self.start_process(ManagedProcessSpec::from(spec))
+        self.start_server_with_log_capture(
+            spec,
+            ServerLogCapture::memory_only(DEFAULT_SERVER_LOG_RETENTION_BYTES),
+        )
+    }
+
+    pub fn start_server_with_log_capture(
+        &mut self,
+        spec: &ServerLaunchSpec,
+        logs: ServerLogCapture,
+    ) -> Result<&ManagedProcessIdentity, ProcessSupervisorError> {
+        self.start_process_with_logs(ManagedProcessSpec::from(spec), logs)
     }
 
     pub fn state(&mut self) -> Result<Option<ManagedProcessState>, ProcessSupervisorError> {
@@ -262,6 +290,13 @@ impl ServerProcessSupervisor {
     pub fn process_mut(&mut self) -> Result<&mut ManagedServerProcess, ProcessSupervisorError> {
         self.current
             .as_mut()
+            .ok_or(ProcessSupervisorError::NotRunning)
+    }
+
+    pub fn log_snapshot(&self) -> Result<ServerLogSnapshot, ProcessSupervisorError> {
+        self.current
+            .as_ref()
+            .map(ManagedServerProcess::log_snapshot)
             .ok_or(ProcessSupervisorError::NotRunning)
     }
 
@@ -281,6 +316,17 @@ impl ServerProcessSupervisor {
         &mut self,
         spec: ManagedProcessSpec,
     ) -> Result<&ManagedProcessIdentity, ProcessSupervisorError> {
+        self.start_process_with_logs(
+            spec,
+            ServerLogCapture::memory_only(DEFAULT_SERVER_LOG_RETENTION_BYTES),
+        )
+    }
+
+    fn start_process_with_logs(
+        &mut self,
+        spec: ManagedProcessSpec,
+        logs: ServerLogCapture,
+    ) -> Result<&ManagedProcessIdentity, ProcessSupervisorError> {
         if let Some(current) = self.current.as_mut() {
             match current.state()? {
                 ManagedProcessState::Running(identity) => {
@@ -296,9 +342,9 @@ impl ServerProcessSupervisor {
             .current_dir(&spec.cwd)
             .envs(&spec.environment)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command
             .spawn()
             .map_err(|source| ProcessSupervisorError::Spawn {
                 executable: spec.executable.clone(),
@@ -308,12 +354,38 @@ impl ServerProcessSupervisor {
         let job = match PlatformJob::create_and_assign(&child) {
             Ok(job) => job,
             Err(source) => {
-                let mut child = child;
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(ProcessSupervisorError::JobObject { pid, source });
             }
         };
+
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                let _ = job.terminate(0xEC);
+                let _ = child.wait();
+                return Err(ProcessSupervisorError::LogPipe {
+                    pid,
+                    stream: "stdout",
+                });
+            }
+        };
+        let stderr = match child.stderr.take() {
+            Some(stderr) => stderr,
+            None => {
+                drop(stdout);
+                let _ = job.terminate(0xEC);
+                let _ = child.wait();
+                return Err(ProcessSupervisorError::LogPipe {
+                    pid,
+                    stream: "stderr",
+                });
+            }
+        };
+
+        spawn_log_drain(stdout, pid, ServerLogStream::Stdout, logs.clone());
+        spawn_log_drain(stderr, pid, ServerLogStream::Stderr, logs.clone());
 
         self.current = Some(ManagedServerProcess {
             child,
@@ -324,9 +396,33 @@ impl ServerProcessSupervisor {
             },
             job,
             exit_evidence: None,
+            logs,
         });
         Ok(&self.current.as_ref().expect("assigned above").identity)
     }
+}
+
+fn spawn_log_drain<R>(reader: R, pid: u32, stream: ServerLogStream, logs: ServerLogCapture)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            match reader.read_until(b'\n', &mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    logs.push(pid, stream, String::from_utf8_lossy(&line).into_owned());
+                }
+                Err(error) => {
+                    logs.push(pid, stream, format!("[log capture error: {error}]"));
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn exit_evidence(status: ExitStatus, kind: ProcessExitKind) -> ProcessExitEvidence {
@@ -588,6 +684,46 @@ mod tests {
         );
         let forced = supervisor.process_mut().unwrap().force_kill().unwrap();
         assert_eq!(forced.kind, ProcessExitKind::ForceKilled);
+    }
+
+    #[test]
+    fn high_volume_stdout_and_stderr_are_drained_without_deadlock() {
+        let script = "1..6000 | ForEach-Object { [Console]::Out.WriteLine(('stdout-' + $_ + '-xxxxxxxxxxxxxxxxxxxxxxxx')); [Console]::Error.WriteLine(('stderr-' + $_ + '-yyyyyyyyyyyyyyyyyyyyyyyy')) }; [Console]::Error.WriteLine('fatal: fixture crash'); exit 23";
+        let logs = ServerLogCapture::memory_only(64 * 1024);
+        let mut supervisor = ServerProcessSupervisor::new();
+        supervisor
+            .start_process_with_logs(pwsh_spec(script, BTreeMap::new()), logs.clone())
+            .unwrap();
+        let evidence = wait_until_exited(&mut supervisor, Duration::from_secs(20));
+        assert_eq!(evidence.code, Some(23));
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            let snapshot = logs.snapshot();
+            if snapshot
+                .entries
+                .iter()
+                .any(|entry| entry.text.contains("fatal: fixture crash"))
+                || std::time::Instant::now() >= deadline
+            {
+                break snapshot;
+            }
+            thread::sleep(Duration::from_millis(20));
+        };
+        assert!(snapshot.retained_bytes <= 64 * 1024);
+        assert!(snapshot.evicted_entries > 0);
+        assert!(snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.stream == ServerLogStream::Stdout));
+        assert!(snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.stream == ServerLogStream::Stderr));
+        assert!(snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.text.contains("fatal: fixture crash")));
     }
 
     #[test]
