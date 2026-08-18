@@ -11,7 +11,7 @@ use std::{
 };
 
 use llamamanager::{
-    llama::inspect_installation,
+    llama::{inspect_installation, sha256_file},
     model_library::scan_root,
     model_store::ModelStore,
     persistence::Database,
@@ -94,19 +94,12 @@ fn is_ready(phase: &RouterModelPhase) -> bool {
 #[ignore = "requires pinned real Windows llama.cpp binaries and two published GGUF models"]
 fn validates_real_router_load_unload_reload_preload_and_switch() {
     let llama_root = PathBuf::from(required_env("LLAMAMANAGER_REAL_LLAMA_ROOT"));
-    let model_a = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL"));
-    let model_b = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL_V2"));
+    let source_model_a = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL"));
+    let source_model_b = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL_V2"));
+    let expected_model_a_sha = required_env("LLAMAMANAGER_REAL_MODEL_SHA256");
+    let expected_model_b_sha = required_env("LLAMAMANAGER_REAL_MODEL_V2_SHA256");
     let evidence_dir = PathBuf::from(required_env("LLAMAMANAGER_REAL_EVIDENCE_DIR"));
     fs::create_dir_all(&evidence_dir).unwrap();
-
-    let model_root = model_a
-        .parent()
-        .expect("primary model must have a containing directory");
-    assert_eq!(
-        model_b.parent(),
-        Some(model_root),
-        "real router operation models must share one --models-dir root"
-    );
 
     let installation =
         inspect_installation(&llama_root).expect("inspect pinned llama.cpp installation");
@@ -115,11 +108,32 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         .as_ref()
         .expect("pinned runtime must expose llama-server.exe");
 
+    // b10472 on Windows cannot open a Unicode --models-dir even though LlamaManager can read
+    // and fingerprint the same files. Keep the canonical Unicode fixtures intact for the M1/M2
+    // validation, and copy their exact bytes to an ASCII temporary router directory so this test
+    // measures router operation semantics rather than that upstream path-encoding limitation.
     let library_temp = tempdir().expect("create temporary M2 model library");
+    let model_root = library_temp.path().join("Router Models with spaces");
+    fs::create_dir_all(&model_root).expect("create ASCII router model directory");
+    let model_a = model_root.join("stories 15M router.gguf");
+    let model_b = model_root.join("TinyLlama router v2.gguf");
+    fs::copy(&source_model_a, &model_a).expect("copy primary GGUF into router fixture");
+    fs::copy(&source_model_b, &model_b).expect("copy secondary GGUF into router fixture");
+    assert_eq!(
+        sha256_file(&model_a).expect("hash primary router fixture"),
+        expected_model_a_sha,
+        "primary router fixture must preserve published GGUF identity"
+    );
+    assert_eq!(
+        sha256_file(&model_b).expect("hash secondary router fixture"),
+        expected_model_b_sha,
+        "secondary router fixture must preserve published GGUF identity"
+    );
+
     let database_path = library_temp.path().join("router-operations.sqlite");
     Database::open(&database_path).expect("initialize base persistence schema");
     let store = ModelStore::open(&database_path).expect("initialize M2 model library schema");
-    let scan = scan_root(&store, model_root, &AtomicBool::new(false), |_| {})
+    let scan = scan_root(&store, &model_root, &AtomicBool::new(false), |_| {})
         .expect("scan real router models into M2 library");
     assert_eq!(scan.progress.errors, 0, "real model scan must be clean");
     assert!(
@@ -317,6 +331,8 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         "server_path": server.path,
         "server_sha256": server.sha256,
         "router_argv": argv,
+        "source_model_a_unicode_path": source_model_a,
+        "source_model_b_unicode_path": source_model_b,
         "model_a": model_a,
         "model_b": model_b,
         "model_a_id": model_a_id,
@@ -329,6 +345,8 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         "final_unload": final_unload,
         "cancelled_before_mutation": true,
         "final_registry": final_registry,
+        "upstream_unicode_models_dir_supported": false,
+        "upstream_unicode_models_dir_reason": "pinned b10472 on Windows fails to initialize router mode when --models-dir contains Unicode; exact published GGUF bytes were copied to an ASCII temporary directory for operation semantics validation",
         "dynamic_default_model_mutation_supported": false,
         "dynamic_default_model_reason": "pinned b10472 exposes router startup policy through CLI/props but no dynamic default-model mutation route; #39 applies persistence/restart verification only where supported"
     });
