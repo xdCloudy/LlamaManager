@@ -276,7 +276,13 @@ fn evidence_identity_error(
             snapshot.registry.endpoint
         ));
     }
-    if snapshot.registry.static_capabilities.server_sha256.as_deref() != server_sha256 {
+    if snapshot
+        .registry
+        .static_capabilities
+        .server_sha256
+        .as_deref()
+        != server_sha256
+    {
         return Some(
             "selected llama.cpp runtime changed; reconcile live state before mutation".into(),
         );
@@ -285,8 +291,8 @@ fn evidence_identity_error(
 }
 
 fn invalidate_router_evidence(tracker: &mut RouterObservabilityTracker, reason: impl Into<String>) {
+    tracker.loading = false;
     if tracker.current.is_some() {
-        tracker.loading = false;
         tracker.last_error = Some(reason.into());
     }
 }
@@ -323,10 +329,24 @@ fn reconcile_selection(state: &mut ControlState, snapshot: &RouterObservabilityS
 }
 
 fn refresh_runtime(mut state: ControlSignal) {
-    let Some(paths) = state.read().paths.clone() else {
+    let snapshot = state.read().clone();
+    if snapshot.busy() {
+        state.write().notice = Some((
+            false,
+            "Another router operation or refresh is already running.".into(),
+        ));
+        return;
+    }
+    let Some(paths) = snapshot.paths.clone() else {
         state.write().notice = Some((false, "Application storage paths are unavailable.".into()));
         return;
     };
+    let previous_tracker = snapshot.tracker.clone();
+    {
+        let mut current = state.write();
+        current.tracker.loading = true;
+        current.notice = None;
+    }
     thread::spawn(move || {
         let result = Database::open(paths.database.clone()).and_then(|db| db.latest_installation());
         let mut current = state.write();
@@ -343,7 +363,10 @@ fn refresh_runtime(mut state: ControlSignal) {
                         .into(),
                 ));
             }
-            Err(error) => current.notice = Some((false, error.to_string())),
+            Err(error) => {
+                current.tracker = previous_tracker;
+                current.notice = Some((false, error.to_string()));
+            }
         }
     });
 }
@@ -457,10 +480,7 @@ fn run_action(
     };
     let (supported, reason) = action_support(&snapshot, action);
     if !supported {
-        state.write().notice = Some((
-            false,
-            format!("{} blocked: {reason}", action.label()),
-        ));
+        state.write().notice = Some((false, format!("{} blocked: {reason}", action.label())));
         return;
     }
     let controller = snapshot.controller.clone();
@@ -1352,10 +1372,12 @@ mod tests {
         let mut tracker = RouterObservabilityTracker::default();
         tracker.reconcile(Ok(snapshot(RouterModelPhase::Loaded, true)));
         assert_eq!(tracker.freshness(), RouterSnapshotFreshness::Live);
+        tracker.loading = true;
 
         invalidate_router_evidence(&mut tracker, "endpoint changed");
 
         assert_eq!(tracker.freshness(), RouterSnapshotFreshness::Stale);
+        assert!(!tracker.loading);
         assert!(tracker.current.is_some());
         assert_eq!(tracker.last_error.as_deref(), Some("endpoint changed"));
     }
