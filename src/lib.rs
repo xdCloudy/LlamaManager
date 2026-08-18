@@ -25,3 +25,4 @@ pub mod server_console;
 pub mod server_logs;
 pub mod server_process;
 pub mod server_readiness;
+pub mod server_ui;
