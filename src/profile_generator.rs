@@ -693,14 +693,8 @@ mod tests {
             explicitly_disabled: false,
         }];
         assert_eq!(
-            generate_profile(&request(
-                &runtime,
-                &selected_model,
-                &compat,
-                &[],
-                &required,
-            ))
-            .unwrap_err(),
+            generate_profile(&request(&runtime, &selected_model, &compat, &[], &required,))
+                .unwrap_err(),
             ProfileGenerationError::RequiredCapabilityMissing {
                 option: "--spec-type".into()
             }
