@@ -709,12 +709,11 @@ fn phase_class(phase: ServerLifecyclePhase) -> &'static str {
     }
 }
 
-fn severity_class(severity: ServerLogSeverity, stream: ServerLogStream) -> &'static str {
+fn severity_class(severity: ServerLogSeverity, _stream: ServerLogStream) -> &'static str {
     match severity {
         ServerLogSeverity::Fatal => "sv-log fatal stderr",
         ServerLogSeverity::Error => "sv-log error stderr",
         ServerLogSeverity::Warning => "sv-log warning",
-        ServerLogSeverity::Info if stream == ServerLogStream::Stderr => "sv-log stderr",
         ServerLogSeverity::Info => "sv-log",
     }
 }
@@ -1004,7 +1003,15 @@ pub fn ServerLifecycleView() -> Element {
                             for entry in visible_logs {
                                 div { class: severity_class(entry.presentation_severity(), entry.stream),
                                     span { class: "seq", "#{entry.sequence}" }
-                                    span { class: "stream", if entry.stream == ServerLogStream::Stdout { "OUT" } else { "ERR" } }
+                                    span {
+                                        class: "stream",
+                                        match entry.presentation_severity() {
+                                            ServerLogSeverity::Info => "INFO",
+                                            ServerLogSeverity::Warning => "WARN",
+                                            ServerLogSeverity::Error => "ERR",
+                                            ServerLogSeverity::Fatal => "FATAL",
+                                        }
+                                    }
                                     span { class: "text", "{entry.text}" }
                                 }
                             }
