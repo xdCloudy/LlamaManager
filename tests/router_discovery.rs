@@ -236,7 +236,10 @@ fn discovers_live_router_state_without_guessing_control_support() {
     let same_name = &registry.models[1];
     assert!(same_name.status.failed);
     assert_eq!(same_name.status.exit_code, Some(1));
-    assert_eq!(same_name.library_link.kind, RouterLibraryLinkKind::Unmatched);
+    assert_eq!(
+        same_name.library_link.kind,
+        RouterLibraryLinkKind::Unmatched
+    );
     assert_eq!(same_name.library_link.model_id, None);
 
     let sha_backed = &registry.models[2];
