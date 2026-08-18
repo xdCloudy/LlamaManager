@@ -27,7 +27,9 @@ pub mod router;
 #[path = "router_management_ui.rs"]
 pub mod router_management;
 pub mod router_observability;
+pub mod telemetry_alerts;
 pub mod telemetry_history;
+pub mod telemetry_overhead;
 // Router operations deliberately expose their runtime/evidence dependencies at call sites;
 // keep the lint exceptions local to this module rather than weakening crate-wide Clippy.
 #[allow(
