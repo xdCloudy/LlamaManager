@@ -105,17 +105,18 @@ pub fn restore_backup(
     validate_target_shape(target)?;
     ensure_parent(target)?;
 
-    let pre_restore_backup = if target.is_file() {
-        let backup = create_backup(target)?;
-        prune_backups(target, backup_retention.max(1))?;
-        Some(backup)
-    } else {
-        None
-    };
-
+    // Secure the selected restore source before creating/pruning the pre-restore backup. The
+    // selected file may itself be an older backup for this target and could otherwise be pruned
+    // before it is opened when retention is low.
     let (temp, mut temp_file) = create_unique_sibling(target, "restore-tmp", ".tmp")?;
-    let mut source =
-        File::open(backup).map_err(|error| io_error("open restore backup", backup, error))?;
+    let mut source = match File::open(backup) {
+        Ok(source) => source,
+        Err(error) => {
+            drop(temp_file);
+            let _ = fs::remove_file(&temp);
+            return Err(io_error("open restore backup", backup, error));
+        }
+    };
     let copied = match io::copy(&mut source, &mut temp_file) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -124,8 +125,30 @@ pub fn restore_backup(
             return Err(io_error("copy restore backup", backup, error));
         }
     };
-    sync_file(&mut temp_file, &temp, "flush restore temporary file")?;
+    if let Err(error) = sync_file(&mut temp_file, &temp, "flush restore temporary file") {
+        drop(temp_file);
+        let _ = fs::remove_file(&temp);
+        return Err(error);
+    }
     drop(temp_file);
+    drop(source);
+
+    let pre_restore_backup = if target.is_file() {
+        let pre_restore_backup = match create_backup(target) {
+            Ok(backup) => backup,
+            Err(error) => {
+                let _ = fs::remove_file(&temp);
+                return Err(error);
+            }
+        };
+        if let Err(error) = prune_backups(target, backup_retention.max(1)) {
+            let _ = fs::remove_file(&temp);
+            return Err(error);
+        }
+        Some(pre_restore_backup)
+    } else {
+        None
+    };
 
     if let Err(error) = replace_from_temp(&temp, target) {
         let _ = fs::remove_file(&temp);
