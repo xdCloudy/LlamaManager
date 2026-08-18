@@ -24,6 +24,8 @@ jobs:
       LLAMA_ARCHIVE_URL: https://github.com/ggml-org/llama.cpp/releases/download/b10472/llama-b10472-bin-win-cpu-x64.zip
       MODEL_URL: https://huggingface.co/ggml-org/tiny-llamas/resolve/6e091d820cbe8f22eeb604d136403eca290b8c1e/stories15M-q4_0.gguf?download=true
       MODEL_SHA256: 6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04
+      MODEL_V2_URL: https://huggingface.co/Aryanne/TinyLlama-1.1B-step-480K-1007B-gguf/resolve/9500b01dfc1684b0b9ab9ef064eec3099f497fe2/q2_k-tinyllama-1.1b-1t.gguf?download=true
+      MODEL_V2_SHA256: 18e8af33a3f4a4ce87314adbdb16757160c6ad93aee2a8ee7aae2a6350d1cfd7
 
     steps:
       - name: Checkout
@@ -37,7 +39,7 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Download pinned upstream llama.cpp and published GGUF
+      - name: Download pinned upstream llama.cpp and published GGUFs
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -45,7 +47,8 @@ jobs:
           $modelRoot = Join-Path $env:RUNNER_TEMP 'Models with spaces 模型'
           $evidenceRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts\real-runtime'
           $archive = Join-Path $env:RUNNER_TEMP 'llama-win-cpu.zip'
-          $model = Join-Path $modelRoot 'stories 15M 模型.gguf'
+          $model = Join-Path $modelRoot 'stories 15M v3 模型.gguf'
+          $modelV2 = Join-Path $modelRoot 'TinyLlama v2 模型.gguf'
 
           New-Item -ItemType Directory -Force -Path $runtimeRoot, $modelRoot, $evidenceRoot | Out-Null
 
@@ -59,6 +62,12 @@ jobs:
             throw "Published GGUF SHA-256 mismatch. Expected $env:MODEL_SHA256, got $modelSha"
           }
 
+          Invoke-WebRequest -Uri $env:MODEL_V2_URL -OutFile $modelV2
+          $modelV2Sha = (Get-FileHash -Path $modelV2 -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($modelV2Sha -ne $env:MODEL_V2_SHA256) {
+            throw "Published GGUF v2 SHA-256 mismatch. Expected $env:MODEL_V2_SHA256, got $modelV2Sha"
+          }
+
           $server = Get-ChildItem -Path $runtimeRoot -Filter llama-server.exe -File -Recurse | Select-Object -First 1
           $bench = Get-ChildItem -Path $runtimeRoot -Filter llama-bench.exe -File -Recurse | Select-Object -First 1
           if (-not $server -or -not $bench) {
@@ -68,6 +77,8 @@ jobs:
           "LLAMAMANAGER_REAL_LLAMA_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_REAL_MODEL=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_REAL_MODEL_SHA256=$modelSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_REAL_MODEL_V2=$modelV2" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_REAL_MODEL_V2_SHA256=$modelV2Sha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_REAL_EVIDENCE_DIR=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_LLAMA_RELEASE_TAG=$env:LLAMA_RELEASE_TAG" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLAMAMANAGER_LLAMA_ARCHIVE_SHA256=$archiveSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -76,10 +87,13 @@ jobs:
             llama_release_tag = $env:LLAMA_RELEASE_TAG
             llama_archive_url = $env:LLAMA_ARCHIVE_URL
             llama_archive_sha256 = $archiveSha
-            model_url = $env:MODEL_URL
-            model_sha256 = $modelSha
+            model_v3_url = $env:MODEL_URL
+            model_v3_sha256 = $modelSha
+            model_v3_path = $model
+            model_v2_url = $env:MODEL_V2_URL
+            model_v2_sha256 = $modelV2Sha
+            model_v2_path = $modelV2
             runtime_root = $runtimeRoot
-            model_path = $model
             server_path = $server.FullName
             bench_path = $bench.FullName
             windows = [System.Environment]::OSVersion.VersionString
