@@ -168,6 +168,7 @@ fn windows_exclusive_lock_is_actionable_and_non_destructive() {
 
 #[cfg(windows)]
 #[test]
+#[allow(clippy::permissions_set_readonly_false)]
 fn windows_read_only_target_is_an_actionable_failure() {
     let temp = tempfile::tempdir().unwrap();
     let target = temp.path().join("read only models.ini");
