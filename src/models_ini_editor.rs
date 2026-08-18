@@ -160,8 +160,8 @@ impl ModelsIniEditorSession {
     }
 
     fn commit_structured_source(&mut self, source: String) -> Result<(), EditorSessionError> {
-        let document = ModelsIniDocument::parse(&source)
-            .map_err(EditorSessionError::StructuredEditInvalid)?;
+        let document =
+            ModelsIniDocument::parse(&source).map_err(EditorSessionError::StructuredEditInvalid)?;
         self.document = document;
         self.canonical_source = source.clone();
         self.raw_draft = source;
@@ -176,16 +176,19 @@ fn set_value_in_source(
     key: &str,
     value: &str,
 ) -> String {
-    let target_index = document.lines().iter().enumerate().rev().find_map(|(index, line)| {
-        match &line.kind {
+    let target_index = document
+        .lines()
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, line)| match &line.kind {
             ModelsIniLineKind::KeyValue {
                 section: line_section,
                 key: line_key,
                 ..
             } if line_section == section && line_key == key => Some(index),
             _ => None,
-        }
-    });
+        });
 
     if let Some(target_index) = target_index {
         let mut output = String::new();
@@ -203,20 +206,18 @@ fn set_value_in_source(
     insert_new_value(document, section, key, value)
 }
 
-fn insert_new_value(
-    document: &ModelsIniDocument,
-    section: &str,
-    key: &str,
-    value: &str,
-) -> String {
+fn insert_new_value(document: &ModelsIniDocument, section: &str, key: &str, value: &str) -> String {
     let ending = preferred_line_ending(document);
     let lines = document.lines();
-    let last_section_index = lines.iter().enumerate().rev().find_map(|(index, line)| {
-        match &line.kind {
-            ModelsIniLineKind::Section { name } if name == section => Some(index),
-            _ => None,
-        }
-    });
+    let last_section_index =
+        lines
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, line)| match &line.kind {
+                ModelsIniLineKind::Section { name } if name == section => Some(index),
+                _ => None,
+            });
 
     match last_section_index {
         Some(section_index) => {
@@ -225,7 +226,7 @@ fn insert_new_value(
                 .enumerate()
                 .skip(section_index + 1)
                 .find_map(|(index, line)| {
-                    matches!(line.kind, ModelsIniLineKind::Section { .. }).then_some(index)
+                    matches!(&line.kind, ModelsIniLineKind::Section { .. }).then_some(index)
                 })
                 .unwrap_or(lines.len());
             let mut output = String::new();
@@ -291,7 +292,8 @@ fn replace_value_preserving_whitespace(raw: &str, value: &str) -> String {
     let trailing_len = right.len() - right.trim_end().len();
     let trailing_len = trailing_len.min(right.len().saturating_sub(leading_len));
 
-    let mut output = String::with_capacity(left.len() + value.len() + leading_len + trailing_len + 1);
+    let mut output =
+        String::with_capacity(left.len() + value.len() + leading_len + trailing_len + 1);
     output.push_str(left);
     output.push('=');
     output.push_str(&right[..leading_len]);
@@ -326,10 +328,9 @@ mod tests {
 
     #[test]
     fn valid_raw_edit_updates_same_canonical_document_and_diff() {
-        let mut session = ModelsIniEditorSession::load(
-            "[*]\nthreads=8\n[model]\nmodel=C:\\Models\\a.gguf\n",
-        )
-        .unwrap();
+        let mut session =
+            ModelsIniEditorSession::load("[*]\nthreads=8\n[model]\nmodel=C:\\Models\\a.gguf\n")
+                .unwrap();
         session.switch_mode(EditorMode::Raw).unwrap();
         session
             .apply_raw_edit("[*]\nthreads=10\n[model]\nmodel=C:\\Models\\a.gguf\n")
@@ -388,13 +389,19 @@ mod tests {
     #[test]
     fn missing_section_is_created_without_rewriting_existing_content() {
         let mut session = ModelsIniEditorSession::load("[*]\n# comment\nthreads=8").unwrap();
-        session.set_value("模型 profile", "ctx-size", "8192").unwrap();
+        session
+            .set_value("模型 profile", "ctx-size", "8192")
+            .unwrap();
         assert!(
             session
                 .canonical_source()
                 .starts_with("[*]\n# comment\nthreads=8\n")
         );
-        assert!(session.canonical_source().contains("[模型 profile]\nctx-size=8192\n"));
+        assert!(
+            session
+                .canonical_source()
+                .contains("[模型 profile]\nctx-size=8192\n")
+        );
     }
 
     #[test]
