@@ -334,8 +334,8 @@ mod tests {
 
     #[test]
     fn malformed_input_reports_line_column_and_context_without_partial_document() {
-        let error = ModelsIniDocument::parse("[*]\nthreads=8\nthis is broken\nmodel=x.gguf\n")
-            .unwrap_err();
+        let error =
+            ModelsIniDocument::parse("[*]\nthreads=8\nthis is broken\nmodel=x.gguf\n").unwrap_err();
 
         assert_eq!(error.line, 3);
         assert_eq!(error.column, 1);
