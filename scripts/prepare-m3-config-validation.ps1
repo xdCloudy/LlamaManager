@@ -62,22 +62,22 @@ $checklist = @"
 LLAMAWAVE M3 CONFIG LAB — INTERACTIVE ACCEPTANCE
 =================================================
 
-External fixture:
+NORMAL external fixture (use for sections A-D):
 $configPath
 
-Long-file fixture:
+LONG-FILE fixture (use for section E):
 $longConfigPath
 
-Invalid raw sample:
+INVALID RAW sample (use for section B):
 $invalidSamplePath
 
 A. NORMAL STRUCTURED + DIFF
-1. Open CONFIG LAB -> OPEN EXTERNAL -> select the normal fixture above.
+1. Open CONFIG LAB -> OPEN EXTERNAL -> select the NORMAL external fixture path printed above (`models.ini`).
 2. Verify [agent 模型], inherited/override badges, validation and empty diff.
 3. STRUCTURED: change threads to 12. Verify DIFF FROM LOADED shows BEFORE/AFTER.
 
 B. RAW ERROR / APPLY BLOCK
-4. Switch to RAW. Add the invalid sample line anywhere outside a comment.
+4. Switch to RAW. Add the INVALID RAW sample line anywhere outside a comment.
 5. Verify RAW PARSE ERROR is visible and VALIDATE + SAVE is disabled.
 6. Remove/fix the malformed line. Verify validation/diff recovers.
 
@@ -90,7 +90,7 @@ D. MANAGED RESTART PERSISTENCE
 10. Close LlamaWave completely, reopen it, then OPEN MANAGED again and confirm the value persists.
 
 E. LONG CONFIG + NARROW LAYOUT
-11. OPEN EXTERNAL -> select the long-file fixture.
+11. OPEN EXTERNAL -> select the LONG-FILE fixture path printed above (`long-models.ini`).
 12. Switch RAW <-> STRUCTURED, scroll the long raw document and make one structured change. Verify the window remains responsive and no fake save/success state appears.
 13. Resize to a narrow desktop window. Verify editor, validation/diff and bottom workspace switcher remain usable.
 
@@ -106,8 +106,9 @@ Automated tests already cover invalid-write preservation, locked/read-only failu
 $exe = Join-Path $repo 'target\release\llamamanager.exe'
 if (-not (Test-Path $exe -PathType Leaf)) { throw "Release executable not found: $exe" }
 
-Write-Host "Prepared M3 validation fixture: $configPath"
-Write-Host "Prepared long rendered-editor fixture: $longConfigPath"
+Write-Host "Prepared NORMAL M3 validation fixture: $configPath"
+Write-Host "Prepared LONG-FILE rendered-editor fixture: $longConfigPath"
+Write-Host "Prepared INVALID RAW sample: $invalidSamplePath"
 Write-Host "Checklist: $checklistPath"
 Start-Process explorer.exe -ArgumentList $artifactRoot
 Start-Process notepad.exe -ArgumentList $checklistPath

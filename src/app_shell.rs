@@ -48,6 +48,29 @@ const SHELL_CSS: &str = r#"
   outline: 2px solid #ff00ff;
   outline-offset: 2px;
 }
+
+/* Config Lab evidence can contain long runtime flags, paths and diagnostics.
+   Keep every evidence string inside its panel instead of allowing grid overflow. */
+.mi-panel-body,
+.mi-diagnostics,
+.mi-diff,
+.mi-diagnostic,
+.mi-diff-entry,
+.mi-diff-pair,
+.mi-diagnostic code,
+.mi-diff-entry code {
+  min-width: 0;
+  max-width: 100%;
+}
+.mi-diagnostic,
+.mi-diff-entry,
+.mi-diagnostic code,
+.mi-diff-entry code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
 @media (max-width: 680px) {
   .surface-switcher {
     left: 10px;
