@@ -105,9 +105,9 @@ pub fn restore_backup(
     validate_target_shape(target)?;
     ensure_parent(target)?;
 
-    // Secure the selected restore source before creating/pruning the pre-restore backup. The
-    // selected file may itself be an older backup for this target and could otherwise be pruned
-    // before it is opened when retention is low.
+    // Secure the selected restore source before creating the pre-restore backup. The selected file
+    // may itself be an older backup for this target, so retention cleanup must not be allowed to
+    // remove it until the replacement has succeeded.
     let (temp, mut temp_file) = create_unique_sibling(target, "restore-tmp", ".tmp")?;
     let mut source = match File::open(backup) {
         Ok(source) => source,
@@ -141,10 +141,6 @@ pub fn restore_backup(
                 return Err(error);
             }
         };
-        if let Err(error) = prune_backups(target, backup_retention.max(1)) {
-            let _ = fs::remove_file(&temp);
-            return Err(error);
-        }
         Some(pre_restore_backup)
     } else {
         None
@@ -153,6 +149,13 @@ pub fn restore_backup(
     if let Err(error) = replace_from_temp(&temp, target) {
         let _ = fs::remove_file(&temp);
         return Err(io_error("replace target during restore", target, error));
+    }
+
+    // Retention cleanup is deliberately post-commit. A failed restore must never destroy the
+    // selected source backup just because it was old enough to be pruned. Cleanup failure after a
+    // successful replacement is safer as excess backups than as a false restore failure.
+    if let Err(error) = prune_backups(target, backup_retention.max(1)) {
+        tracing::warn!(%error, target = %target.display(), "restored configuration but could not prune backup retention");
     }
 
     Ok(ConfigRestoreReceipt {
