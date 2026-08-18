@@ -8,6 +8,7 @@ pub mod gguf;
 pub mod gpu_telemetry;
 pub mod hardware_telemetry;
 pub mod inference_telemetry;
+pub mod telemetry_history;
 pub mod llama;
 pub mod model_library;
 pub mod model_library_actions;
