@@ -6,6 +6,7 @@ on:
       - ".github/workflows/real-runtime-validation.yml"
       - "tests/real_runtime_validation.rs"
       - "tests/real_hardware_telemetry.rs"
+      - "tests/real_inference_telemetry.rs"
       - "tests/real_server_readiness.rs"
       - "tests/real_router_discovery.rs"
       - "tests/real_router_operations.rs"
@@ -14,6 +15,7 @@ on:
       - "src/benchmark.rs"
       - "src/gguf.rs"
       - "src/hardware_telemetry.rs"
+      - "src/inference_telemetry.rs"
       - "src/llama.rs"
       - "src/persistence.rs"
       - "src/router.rs"
@@ -204,6 +206,10 @@ jobs:
         shell: pwsh
         run: cargo test --test real_server_readiness -- --ignored --nocapture
 
+      - name: Run real streaming inference telemetry validation
+        shell: pwsh
+        run: cargo test --test real_inference_telemetry -- --ignored --nocapture
+
       - name: Run real llama-server router discovery validation
         shell: pwsh
         run: cargo test --test real_router_discovery -- --ignored --nocapture
@@ -228,6 +234,8 @@ jobs:
           if (Test-Path $hardware) { Get-Content $hardware }
           $hardwareIndependent = 'artifacts\real-runtime\hardware-telemetry-independent.json'
           if (Test-Path $hardwareIndependent) { Get-Content $hardwareIndependent }
+          $inference = 'artifacts\real-runtime\inference-telemetry.json'
+          if (Test-Path $inference) { Get-Content $inference }
           $summary = 'artifacts\real-runtime\summary.json'
           if (Test-Path $summary) { Get-Content $summary }
           $readiness = 'artifacts\real-runtime\server-readiness-inference.json'
