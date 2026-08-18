@@ -52,7 +52,7 @@ Legend: `✅` satisfied, `🟡` implemented/partially evidenced but not closure-
 | **M1 Real installation → benchmark** | #1 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M2 Model library + compatibility** | #2 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M3 `models.ini`** | #3 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **M4 Server lifecycle** | #4 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **M4 Server lifecycle** | #4 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M5 Router + switching** | #5 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M6 Live telemetry** | #6 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M7 Benchmark laboratory** | #7 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -132,20 +132,22 @@ C5 requires:
 
 ## M4 — Managed `llama-server` lifecycle
 
+**Current state:** C5 — Complete. Final interactive/runtime evidence: `docs/evidence/M4_SERVER_LIFECYCLE_2026-08-18.md`.
+
 C5 requires:
 
-- [ ] Command builder uses executable + argv, never shell-concatenated command strings.
-- [ ] Start, stop, restart, readiness, health, and minimal inference verification work against a real server.
-- [ ] Exact command is shown to the user and retained for diagnostics.
-- [ ] Unsupported flags are blocked from launch based on discovered capability evidence.
-- [ ] Port collisions are detected before/at launch with an actionable error.
-- [ ] Stdout/stderr are streamed and retained without hiding fatal output.
-- [ ] Normal stop, timeout, force-kill, crash, and failed-start states are distinguishable.
-- [ ] Windows Job Object/process-tree supervision is verified so managed children do not leak.
-- [ ] Paths containing spaces and Unicode work.
-- [ ] App restart/recovery correctly represents an already-running or previously-crashed process.
-- [ ] Minimal inference proves readiness is not merely "process exists".
-- [ ] CI plus real Windows lifecycle regression checks are green.
+- [x] Command builder uses executable + argv, never shell-concatenated command strings.
+- [x] Start, stop, restart, readiness, health, and minimal inference verification work against a real server.
+- [x] Exact command is shown to the user and retained for diagnostics.
+- [x] Unsupported flags are blocked from launch based on discovered capability evidence.
+- [x] Port collisions are detected before/at launch with an actionable error.
+- [x] Stdout/stderr are streamed and retained without hiding fatal output.
+- [x] Normal stop, timeout, force-kill, crash, and failed-start states are distinguishable.
+- [x] Windows Job Object/process-tree supervision is verified so managed children do not leak.
+- [x] Paths containing spaces and Unicode work.
+- [x] App restart/recovery correctly represents an already-running or previously-crashed process.
+- [x] Minimal inference proves readiness is not merely "process exists".
+- [x] CI plus real Windows lifecycle regression checks are green.
 
 ## M5 — Router + model switching
 
