@@ -3,11 +3,8 @@
 use std::{env, fs, path::PathBuf};
 
 use llamamanager::{
-    benchmark::run_default_benchmark,
-    error::LlamaManagerError,
-    gguf::inspect_gguf,
-    llama::inspect_installation,
-    persistence::Database,
+    benchmark::run_default_benchmark, error::LlamaManagerError, gguf::inspect_gguf,
+    llama::inspect_installation, persistence::Database,
 };
 use serde_json::json;
 
@@ -28,9 +25,15 @@ fn validates_real_windows_runtime_end_to_end() {
     let root_text = llama_root.to_string_lossy();
     let model_text = model_path.to_string_lossy();
     assert!(root_text.contains(' '), "runtime path must exercise spaces");
-    assert!(root_text.contains('外'), "runtime path must exercise Unicode");
+    assert!(
+        root_text.contains('外'),
+        "runtime path must exercise Unicode"
+    );
     assert!(model_text.contains(' '), "model path must exercise spaces");
-    assert!(model_text.contains('模'), "model path must exercise Unicode");
+    assert!(
+        model_text.contains('模'),
+        "model path must exercise Unicode"
+    );
 
     // #13: inspect a real, external llama.cpp installation and retain exact
     // executable identities plus upstream-produced help/version evidence.
@@ -62,7 +65,11 @@ fn validates_real_windows_runtime_end_to_end() {
 
     let fake_root = negative_root.join("fake executable");
     fs::create_dir_all(&fake_root).unwrap();
-    fs::write(fake_root.join("llama-bench.exe"), b"not a Windows executable").unwrap();
+    fs::write(
+        fake_root.join("llama-bench.exe"),
+        b"not a Windows executable",
+    )
+    .unwrap();
     assert!(inspect_installation(&fake_root).is_err());
 
     // #14: inspect a published GGUF rather than a generated test fixture and
