@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    llama::LlamaInstallation,
+    llama::{LlamaInstallation, now_ms},
     model_store::ModelStore,
     paths::AppPaths,
     persistence::Database,
@@ -16,7 +16,8 @@ use crate::{
         RouterObservabilityTracker, RouterSnapshotFreshness, discover_router_observability,
     },
     router_operations::{
-        RouterOperationCancellation, RouterOperationController, RouterOperationState,
+        RouterOperationCancellation, RouterOperationController, RouterOperationFailure,
+        RouterOperationState,
     },
     server_readiness::ServerEndpoint,
 };
@@ -449,6 +450,23 @@ fn operation_notice(
     }
 }
 
+fn recover_worker_panic(state: RouterOperationState) -> RouterOperationState {
+    match state {
+        RouterOperationState::Running(progress) => {
+            RouterOperationState::Failed(RouterOperationFailure {
+                kind: progress.kind,
+                source_model: progress.source_model,
+                target_model: progress.target_model,
+                started_at_unix_ms: progress.started_at_unix_ms,
+                failed_at_unix_ms: now_ms(),
+                message: "router operation worker panicked".into(),
+                last_registry: progress.last_registry,
+            })
+        }
+        other => other,
+    }
+}
+
 fn run_action(
     mut state: ControlSignal,
     action: RequestedAction,
@@ -572,11 +590,16 @@ fn run_action(
             state.write().operation_state = controller.state();
             thread::sleep(Duration::from_millis(75));
         }
-        let result = handle
-            .join()
+        let joined = handle.join();
+        let worker_panicked = joined.is_err();
+        let result = joined
             .map_err(|_| "router operation worker panicked".to_string())
             .and_then(|result| result);
-        let final_operation = controller.state();
+        let final_operation = if worker_panicked {
+            recover_worker_panic(controller.state())
+        } else {
+            controller.state()
+        };
 
         let refreshed = match open_store(&paths) {
             Ok(store) => discover_router_observability(
@@ -592,6 +615,10 @@ fn run_action(
 
         let mut current = state.write();
         current.pending_action = None;
+        if worker_panicked {
+            current.controller = RouterOperationController::new();
+            current.cancellation = RouterOperationCancellation::new();
+        }
         current.operation_state = final_operation;
         if let Ok(snapshot) = refreshed.as_ref() {
             reconcile_selection(&mut current, snapshot);
@@ -1186,6 +1213,7 @@ mod tests {
             RouterLibraryLinkKind, RouterModel, RouterModelStatus, RouterStaticCapabilities,
         },
         router_observability::EvidenceValue,
+        router_operations::{RouterOperationKind, RouterOperationProgress},
     };
 
     fn feature(state: RouterFeatureState) -> RouterFeatureEvidence {
@@ -1396,5 +1424,28 @@ mod tests {
         assert!(message.contains("completed"));
         assert!(message.contains("reconciliation failed"));
         assert!(message.contains("snapshot is stale"));
+    }
+
+    #[test]
+    fn worker_panic_running_state_becomes_recoverable_failure() {
+        let running = RouterOperationState::Running(RouterOperationProgress {
+            kind: RouterOperationKind::Load,
+            source_model: Some("source".into()),
+            target_model: Some("target".into()),
+            started_at_unix_ms: 42,
+            message: "loading".into(),
+            last_registry: None,
+        });
+
+        let recovered = recover_worker_panic(running);
+        let RouterOperationState::Failed(failure) = recovered else {
+            panic!("worker panic must become failed evidence");
+        };
+        assert_eq!(failure.kind, RouterOperationKind::Load);
+        assert_eq!(failure.source_model.as_deref(), Some("source"));
+        assert_eq!(failure.target_model.as_deref(), Some("target"));
+        assert_eq!(failure.started_at_unix_ms, 42);
+        assert!(failure.failed_at_unix_ms >= failure.started_at_unix_ms);
+        assert_eq!(failure.message, "router operation worker panicked");
     }
 }
