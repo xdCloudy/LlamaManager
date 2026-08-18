@@ -49,7 +49,7 @@ Legend: `✅` satisfied, `🟡` implemented/partially evidenced but not closure-
 | Milestone | Issue | Maturity | G1 | G2 | G3 | G4 | G5 | G6 | G7 | G8 | G9 | G10 |
 |---|---:|---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **M0 Clean baseline** | — | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **M1 Real installation → benchmark** | #1 | **C3** | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | 🟡 |
+| **M1 Real installation → benchmark** | #1 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M2 Model library + compatibility** | #2 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M3 `models.ini`** | #3 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M4 Server lifecycle** | #4 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -68,25 +68,25 @@ The matrix is evidence-based. A future milestone can contain incidental code wit
 
 ## M1 — Real installation → real benchmark result
 
-**Current target:** C3 → C4 → C5.
+**Current state:** C5 — Complete. Final interactive evidence: `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
 
 C5 requires all of the following:
 
-- [ ] Release build launches in an interactive Windows desktop session.
-- [ ] Dioxus UI is visually inspected at 1280×720 and a normal desktop resolution.
-- [ ] An arbitrary real `llama.cpp` installation outside the repository is selected successfully.
-- [ ] `llama-server` / `llama-bench` discovery works recursively and executable identity/hash evidence is correct.
-- [ ] Help/version/backend capability evidence comes from the selected binaries.
-- [ ] A real arbitrary GGUF is selected and metadata is read from the file rather than inferred from its filename.
-- [ ] A real `llama-bench` run completes through the GUI path.
-- [ ] Exact executable + argv invocation is visible/recoverable.
-- [ ] Non-zero benchmark exit remains a failed run and cannot become fake success.
-- [ ] Raw stdout/stderr/exit status are retained.
-- [ ] Parsed metrics correspond to retained raw evidence.
-- [ ] Restarting the app preserves benchmark history.
-- [ ] Paths containing spaces are exercised; Unicode paths are exercised or a tracked limitation is recorded.
-- [ ] Relevant regression tests and strict CI remain green after runtime fixes.
-- [ ] `BUILD_STATUS.md` and `WORKLOG.md` record the runtime evidence and remaining limitations.
+- [x] Release build launches in an interactive Windows desktop session.
+- [x] Dioxus UI is visually inspected at 1280×720 and a normal desktop resolution.
+- [x] An arbitrary real `llama.cpp` installation outside the repository is selected successfully.
+- [x] `llama-server` / `llama-bench` discovery works recursively and executable identity/hash evidence is correct.
+- [x] Help/version/backend capability evidence comes from the selected binaries.
+- [x] A real arbitrary GGUF is selected and metadata is read from the file rather than inferred from its filename.
+- [x] A real `llama-bench` run completes through the GUI path.
+- [x] Exact executable + argv invocation is visible/recoverable.
+- [x] Non-zero benchmark exit remains a failed run and cannot become fake success.
+- [x] Raw stdout/stderr/exit status are retained.
+- [x] Parsed metrics correspond to retained raw evidence.
+- [x] Restarting the app preserves benchmark history.
+- [x] Paths containing spaces are exercised; Unicode paths are exercised or a tracked limitation is recorded.
+- [x] Relevant regression tests and strict CI remain green after runtime fixes.
+- [x] `BUILD_STATUS.md` and `WORKLOG.md` record the runtime evidence and remaining limitations.
 
 ## M2 — Model library + compatibility
 
