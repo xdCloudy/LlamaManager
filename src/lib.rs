@@ -15,3 +15,4 @@ pub mod multimodal;
 pub mod paths;
 pub mod persistence;
 pub mod profile_generator;
+pub mod server_command;
