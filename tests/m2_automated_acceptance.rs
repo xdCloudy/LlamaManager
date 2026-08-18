@@ -141,7 +141,11 @@ fn scan_is_recursive_idempotent_dedupes_content_and_preserves_restart_state() {
     assert_eq!(first_report.progress.models_saved, 2);
     assert_eq!(first_report.progress.errors, 1);
     let records = store.list_model_records().unwrap();
-    assert_eq!(records.len(), 1, "duplicate content must be one model identity");
+    assert_eq!(
+        records.len(),
+        1,
+        "duplicate content must be one model identity"
+    );
     assert_eq!(records[0].locations.len(), 2);
 
     let second_report = scan_root(&store, &root, &cancel, |_| {}).unwrap();
@@ -179,7 +183,12 @@ fn locked_file_isolated_without_aborting_other_windows_paths() {
 
     assert_eq!(store.list_model_records().unwrap().len(), 1);
     assert!(report.progress.errors >= 1);
-    assert!(report.issues.iter().any(|issue| issue.path.as_deref() == Some(locked.as_path())));
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.path.as_deref() == Some(locked.as_path()))
+    );
 }
 
 #[test]
@@ -189,7 +198,11 @@ fn directory_junction_is_not_followed_during_recursive_scan() {
     let outside = temp.path().join("outside target");
     fs::create_dir_all(&root).unwrap();
     fs::create_dir_all(&outside).unwrap();
-    write_minimal_model(&outside.join("must-not-be-followed.gguf"), "qwen35", "Outside");
+    write_minimal_model(
+        &outside.join("must-not-be-followed.gguf"),
+        "qwen35",
+        "Outside",
+    );
 
     let junction = root.join("junction 外部");
     let status = Command::new("cmd")
@@ -198,7 +211,10 @@ fn directory_junction_is_not_followed_during_recursive_scan() {
         .arg(&outside)
         .status()
         .unwrap();
-    assert!(status.success(), "Windows directory junction creation failed");
+    assert!(
+        status.success(),
+        "Windows directory junction creation failed"
+    );
 
     let db = temp.path().join("library.sqlite");
     let store = open_store(&db);
@@ -285,7 +301,11 @@ fn compatibility_reasons_persist_and_installation_drift_marks_them_stale() {
     changed.server.as_mut().unwrap().sha256 = "c".repeat(64);
     assert!(persisted.is_stale(&model, &changed));
 
-    let unknown = text_model("model-unknown", PathBuf::from("unknown.gguf"), "future-arch");
+    let unknown = text_model(
+        "model-unknown",
+        PathBuf::from("unknown.gguf"),
+        "future-arch",
+    );
     assert_eq!(
         evaluate_compatibility(&unknown, &install, None).status,
         CompatibilityStatus::Unknown
