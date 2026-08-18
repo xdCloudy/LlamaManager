@@ -21,6 +21,7 @@ pub mod paths;
 pub mod persistence;
 pub mod profile_generator;
 pub mod router;
+pub mod router_management;
 pub mod router_observability;
 // Router operations deliberately expose their runtime/evidence dependencies at call sites;
 // keep the lint exceptions local to this module rather than weakening crate-wide Clippy.
