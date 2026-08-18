@@ -12,6 +12,7 @@ use llamamanager::{
     gguf::ModelInfo,
     llama::{LlamaInstallation, ToolEvidence},
     model_store::{FileFingerprint, ModelStore},
+    persistence::Database,
     router::{
         RouterDiscoveryError, RouterFeatureState, RouterLibraryLinkKind, RouterModelPhase,
         RouterRole, discover_router_registry,
@@ -128,6 +129,7 @@ fn model_info(path: PathBuf, sha256: &str) -> ModelInfo {
 fn discovers_live_router_state_without_guessing_control_support() {
     let temp = tempdir().unwrap();
     let database = temp.path().join("library.sqlite");
+    Database::open(&database).unwrap();
     let store = ModelStore::open(&database).unwrap();
     let known_path = temp.path().join("known model.gguf");
     fs::write(&known_path, b"GGUF").unwrap();
