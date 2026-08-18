@@ -256,6 +256,41 @@ fn endpoint_from_state(state: &ControlState) -> Result<ServerEndpoint, String> {
     })
 }
 
+fn selected_server_sha(state: &ControlState) -> Option<&str> {
+    state
+        .installation
+        .as_ref()
+        .and_then(|installation| installation.server.as_ref())
+        .map(|server| server.sha256.as_str())
+}
+
+fn evidence_identity_error(
+    snapshot: &RouterObservabilitySnapshot,
+    endpoint: &ServerEndpoint,
+    server_sha256: Option<&str>,
+) -> Option<String> {
+    let current_authority = endpoint.authority();
+    if snapshot.registry.endpoint != current_authority {
+        return Some(format!(
+            "endpoint changed from {} to {current_authority}; reconcile live state before mutation",
+            snapshot.registry.endpoint
+        ));
+    }
+    if snapshot.registry.static_capabilities.server_sha256.as_deref() != server_sha256 {
+        return Some(
+            "selected llama.cpp runtime changed; reconcile live state before mutation".into(),
+        );
+    }
+    None
+}
+
+fn invalidate_router_evidence(tracker: &mut RouterObservabilityTracker, reason: impl Into<String>) {
+    if tracker.current.is_some() {
+        tracker.loading = false;
+        tracker.last_error = Some(reason.into());
+    }
+}
+
 fn open_store(paths: &AppPaths) -> Result<ModelStore, String> {
     ModelStore::open(paths.database.clone()).map_err(|error| error.to_string())
 }
@@ -298,9 +333,14 @@ fn refresh_runtime(mut state: ControlSignal) {
         match result {
             Ok(installation) => {
                 current.installation = installation;
+                invalidate_router_evidence(
+                    &mut current.tracker,
+                    "llama.cpp runtime evidence was refreshed; live router state must be reconciled again",
+                );
                 current.notice = Some((
                     true,
-                    "Reloaded persisted llama.cpp runtime evidence.".into(),
+                    "Reloaded persisted llama.cpp runtime evidence. Reconcile live router state before mutation."
+                        .into(),
                 ));
             }
             Err(error) => current.notice = Some((false, error.to_string())),
@@ -349,6 +389,43 @@ fn refresh_router(mut state: ControlSignal) {
     });
 }
 
+fn operation_notice(
+    action: RequestedAction,
+    result: Result<(), String>,
+    reconciliation_error: Option<String>,
+) -> (bool, String) {
+    match (result, reconciliation_error) {
+        (Ok(()), None) => (
+            true,
+            format!(
+                "{} completed and live state was reconciled.",
+                action.label()
+            ),
+        ),
+        (Ok(()), Some(error)) => (
+            false,
+            format!(
+                "{} completed, but post-operation live reconciliation failed: {error}. Controller success evidence is retained and the router snapshot is stale until reconciliation succeeds.",
+                action.label()
+            ),
+        ),
+        (Err(error), None) => (
+            false,
+            format!(
+                "{} failed: {error}. Controller evidence is retained below; live state was reconciled after the failure.",
+                action.label()
+            ),
+        ),
+        (Err(error), Some(reconciliation_error)) => (
+            false,
+            format!(
+                "{} failed: {error}. Post-operation live reconciliation also failed: {reconciliation_error}. Controller evidence is retained and the router snapshot is stale.",
+                action.label()
+            ),
+        ),
+    }
+}
+
 fn run_action(
     mut state: ControlSignal,
     action: RequestedAction,
@@ -378,6 +455,14 @@ fn run_action(
             return;
         }
     };
+    let (supported, reason) = action_support(&snapshot, action);
+    if !supported {
+        state.write().notice = Some((
+            false,
+            format!("{} blocked: {reason}", action.label()),
+        ));
+        return;
+    }
     let controller = snapshot.controller.clone();
     let cancellation = snapshot.cancellation.clone();
     cancellation.reset();
@@ -483,6 +568,7 @@ fn run_action(
             .map_err(|error| error.to_string()),
             Err(error) => Err(error),
         };
+        let reconciliation_error = refreshed.as_ref().err().cloned();
 
         let mut current = state.write();
         current.pending_action = None;
@@ -491,22 +577,7 @@ fn run_action(
             reconcile_selection(&mut current, snapshot);
         }
         current.tracker.reconcile(refreshed);
-        current.notice = match result {
-            Ok(()) => Some((
-                true,
-                format!(
-                    "{} completed and live state was reconciled.",
-                    action.label()
-                ),
-            )),
-            Err(error) => Some((
-                false,
-                format!(
-                    "{} failed: {error}. Controller evidence is retained below.",
-                    action.label()
-                ),
-            )),
-        };
+        current.notice = Some(operation_notice(action, result, reconciliation_error));
     });
 }
 
@@ -593,6 +664,13 @@ fn action_support(state: &ControlState, action: RequestedAction) -> (bool, Strin
     let Some(snapshot) = state.tracker.current.as_ref() else {
         return (false, "no live router snapshot".into());
     };
+    let endpoint = match endpoint_from_state(state) {
+        Ok(endpoint) => endpoint,
+        Err(error) => return (false, error),
+    };
+    if let Some(error) = evidence_identity_error(snapshot, &endpoint, selected_server_sha(state)) {
+        return (false, error);
+    }
     if snapshot.registry.role != RouterRole::Router {
         return (false, "selected endpoint is a single-model server".into());
     }
@@ -808,7 +886,17 @@ pub fn RouterManagementView() -> Element {
                                 class: "rm-input",
                                 value: "{snapshot.preferences.host}",
                                 disabled: busy,
-                                oninput: move |event| state.write().preferences.host = event.value(),
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    let mut current = state.write();
+                                    if current.preferences.host != value {
+                                        current.preferences.host = value;
+                                        invalidate_router_evidence(
+                                            &mut current.tracker,
+                                            "router host changed; reconcile live state before mutation",
+                                        );
+                                    }
+                                },
                             }
                         }
                         div { class: "rm-field",
@@ -817,7 +905,17 @@ pub fn RouterManagementView() -> Element {
                                 class: "rm-input",
                                 value: "{snapshot.port_text}",
                                 disabled: busy,
-                                oninput: move |event| state.write().port_text = event.value(),
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    let mut current = state.write();
+                                    if current.port_text != value {
+                                        current.port_text = value;
+                                        invalidate_router_evidence(
+                                            &mut current.tracker,
+                                            "router port changed; reconcile live state before mutation",
+                                        );
+                                    }
+                                },
                             }
                         }
                         div { class: "rm-field wide",
@@ -827,7 +925,17 @@ pub fn RouterManagementView() -> Element {
                                 r#type: "password",
                                 value: "{snapshot.api_key}",
                                 disabled: busy,
-                                oninput: move |event| state.write().api_key = event.value(),
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    let mut current = state.write();
+                                    if current.api_key != value {
+                                        current.api_key = value;
+                                        invalidate_router_evidence(
+                                            &mut current.tracker,
+                                            "router authentication changed; reconcile live state before mutation",
+                                        );
+                                    }
+                                },
                             }
                         }
                     }
@@ -836,8 +944,12 @@ pub fn RouterManagementView() -> Element {
                             class: if snapshot.preferences.allow_non_loopback { "rm-button magenta" } else { "rm-button" },
                             disabled: busy,
                             onclick: move |_| {
-                                let enabled = state.read().preferences.allow_non_loopback;
-                                state.write().preferences.allow_non_loopback = !enabled;
+                                let mut current = state.write();
+                                current.preferences.allow_non_loopback = !current.preferences.allow_non_loopback;
+                                invalidate_router_evidence(
+                                    &mut current.tracker,
+                                    "router LAN opt-in changed; reconcile live state before mutation",
+                                );
                             },
                             if snapshot.preferences.allow_non_loopback { "LAN OPT-IN ON" } else { "LAN OPT-IN OFF" }
                         }
@@ -1212,5 +1324,52 @@ mod tests {
             verify_preferred_model(&preferences, &tracker),
             PreferredModelVerification::NotReady { .. }
         ));
+    }
+
+    #[test]
+    fn identity_check_rejects_endpoint_and_runtime_drift() {
+        let mut observed = snapshot(RouterModelPhase::Loaded, true);
+        observed.registry.static_capabilities.server_sha256 = Some("server-a".into());
+        let endpoint = ServerEndpoint::loopback(8080);
+        assert_eq!(
+            evidence_identity_error(&observed, &endpoint, Some("server-a")),
+            None
+        );
+
+        let other_endpoint = ServerEndpoint::loopback(8081);
+        assert!(
+            evidence_identity_error(&observed, &other_endpoint, Some("server-a"))
+                .is_some_and(|reason| reason.contains("endpoint changed"))
+        );
+        assert!(
+            evidence_identity_error(&observed, &endpoint, Some("server-b"))
+                .is_some_and(|reason| reason.contains("runtime changed"))
+        );
+    }
+
+    #[test]
+    fn identity_changes_make_retained_snapshot_stale() {
+        let mut tracker = RouterObservabilityTracker::default();
+        tracker.reconcile(Ok(snapshot(RouterModelPhase::Loaded, true)));
+        assert_eq!(tracker.freshness(), RouterSnapshotFreshness::Live);
+
+        invalidate_router_evidence(&mut tracker, "endpoint changed");
+
+        assert_eq!(tracker.freshness(), RouterSnapshotFreshness::Stale);
+        assert!(tracker.current.is_some());
+        assert_eq!(tracker.last_error.as_deref(), Some("endpoint changed"));
+    }
+
+    #[test]
+    fn successful_operation_with_failed_reconciliation_is_not_success_notice() {
+        let (success, message) = operation_notice(
+            RequestedAction::Load,
+            Ok(()),
+            Some("router disconnected".into()),
+        );
+        assert!(!success);
+        assert!(message.contains("completed"));
+        assert!(message.contains("reconciliation failed"));
+        assert!(message.contains("snapshot is stale"));
     }
 }
