@@ -8,6 +8,7 @@ pub mod gguf;
 pub mod llama;
 pub mod model_library;
 pub mod model_library_actions;
+#[path = "model_library_ui_threadsafe.rs"]
 pub mod model_library_ui;
 pub mod model_store;
 pub mod models_ini;
