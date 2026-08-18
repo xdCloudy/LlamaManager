@@ -589,7 +589,11 @@ mod tests {
             ServerLogStream::Stderr,
             "slot print_timing: prompt eval time = 32.45 ms / 3 tokens",
         );
-        let warning = logs.push(1, ServerLogStream::Stderr, "warning: warmup fallback enabled");
+        let warning = logs.push(
+            1,
+            ServerLogStream::Stderr,
+            "warning: warmup fallback enabled",
+        );
         let error = logs.push(1, ServerLogStream::Stderr, "error: failed to load model");
         let fatal = logs.push(1, ServerLogStream::Stderr, "fatal: model load failed");
 
