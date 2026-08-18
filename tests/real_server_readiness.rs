@@ -51,11 +51,13 @@ fn validates_real_llama_server_readiness_and_inference() {
         .expect("start pinned llama-server under Windows Job Object supervision")
         .clone();
 
-    let mut policy = ReadinessPolicy::default();
-    policy.timeout = Duration::from_secs(90);
-    policy.request_timeout = Duration::from_secs(10);
-    policy.initial_backoff = Duration::from_millis(100);
-    policy.max_backoff = Duration::from_secs(1);
+    let policy = ReadinessPolicy {
+        timeout: Duration::from_secs(90),
+        request_timeout: Duration::from_secs(10),
+        initial_backoff: Duration::from_millis(100),
+        max_backoff: Duration::from_secs(1),
+        ..ReadinessPolicy::default()
+    };
     let cancellation = AtomicBool::new(false);
 
     let readiness = {
