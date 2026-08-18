@@ -2,6 +2,42 @@
 
 This log records verified implementation state, not roadmap aspiration.
 
+## 2026-08-18 — M1 C5 interactive GUI benchmark closure
+
+### Goal
+
+Exercise the one remaining human-operated M1 acceptance path: launch a real benchmark from the native GUI against the pinned prepared runtime/model and verify the displayed invocation, measured result, and persisted history.
+
+### Verified
+
+The repository owner ran the release application on an interactive Windows desktop from source commit `5a5ebb3fad92f7a25ad4f1f38822d03a48214e30` after preparing the stack with `scripts/prepare-m1-gui-benchmark.ps1`.
+
+The GUI selected:
+
+```text
+runtime: C:\LlamaManager\artifacts\m1-gui-benchmark\llama cpp runtime with spaces
+model:   C:\LlamaManager\artifacts\m1-gui-benchmark\Model Files with spaces\stories 15M benchmark.gguf
+```
+
+The Benchmark view exposed the real `llama-bench.exe` command with `-m <model> -r 3 -o json`, executed it from the GUI, reported completion with raw/parsed evidence retained, and displayed:
+
+```text
+pp512  41297.19 tok/s
+tg128   3504.32 tok/s
+```
+
+The History view showed one persisted SQLite record with matching prompt/decode metrics. The Overview showed runtime detected, RPC backend, model ready, 433 discovered capabilities, one persisted run, and measured benchmark state.
+
+Three 1920×1032 operator screenshots were captured; their SHA-256 digests and the full verification record are stored in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
+
+The source commit exercised by the operator had already passed standard Windows CI run `32094641702` and permanent real Windows Runtime Validation run `32094641715`.
+
+### Result
+
+The final G8 GUI-interaction evidence gap is closed. Together with the previously recorded G1–G7 and G9–G10 evidence, M1 reaches **C5 — Complete** and #16/#1 are closure-ready. The M2 dependency gate may now be released.
+
+---
+
 ## 2026-08-18 — M1 real Windows runtime validation and C4 evidence
 
 ### Goal
@@ -64,7 +100,7 @@ The pinned upstream `llama-bench` b10472 Windows build fails when the model path
 
 Issue #12 already recorded a successful manual visual inspection of the native release UI at 1280×720 and 1600×900.
 
-M1 is now truthfully at **C4 — Runtime verified**. The one remaining C5 requirement is a real benchmark launched through the interactive GUI path. Backend real-runtime evidence and standalone UI visual evidence do not prove that interaction, so #16 and #1 remain open until it is exercised and recorded.
+M1 was truthfully held at **C4 — Runtime verified** at this checkpoint because a real benchmark had not yet been launched through the interactive GUI path. That final interaction was subsequently completed and is recorded in the C5 entry above.
 
 ### Workflow cleanup
 
