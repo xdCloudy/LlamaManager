@@ -24,6 +24,7 @@ use llamamanager::{
 };
 use serde_json::json;
 use tempfile::tempdir;
+use walkdir::WalkDir;
 
 struct ChildGuard(Child);
 
@@ -41,6 +42,29 @@ fn required_env(name: &str) -> String {
 fn free_loopback_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral loopback port");
     listener.local_addr().expect("read local address").port()
+}
+
+fn copy_tree(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).expect("create ASCII router runtime directory");
+    for entry in WalkDir::new(source).follow_links(false) {
+        let entry = entry.expect("walk pinned router runtime");
+        let relative = entry
+            .path()
+            .strip_prefix(source)
+            .expect("derive router runtime relative path");
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+        let target = destination.join(relative);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).expect("create router runtime subdirectory");
+        } else if entry.file_type().is_file() {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).expect("create router runtime file parent");
+            }
+            fs::copy(entry.path(), &target).expect("copy pinned router runtime file");
+        }
+    }
 }
 
 fn normalized_path(path: &Path) -> String {
@@ -93,7 +117,7 @@ fn is_ready(phase: &RouterModelPhase) -> bool {
 #[test]
 #[ignore = "requires pinned real Windows llama.cpp binaries and two published GGUF models"]
 fn validates_real_router_load_unload_reload_preload_and_switch() {
-    let llama_root = PathBuf::from(required_env("LLAMAMANAGER_REAL_LLAMA_ROOT"));
+    let source_llama_root = PathBuf::from(required_env("LLAMAMANAGER_REAL_LLAMA_ROOT"));
     let source_model_a = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL"));
     let source_model_b = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL_V2"));
     let expected_model_a_sha = required_env("LLAMAMANAGER_REAL_MODEL_SHA256");
@@ -101,19 +125,34 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
     let evidence_dir = PathBuf::from(required_env("LLAMAMANAGER_REAL_EVIDENCE_DIR"));
     fs::create_dir_all(&evidence_dir).unwrap();
 
+    // b10472 on Windows can inspect an installation under Unicode paths, but router child-process
+    // spawning falls back through the active multi-byte code page and mangles that executable
+    // path. Copy the exact pinned runtime to an ASCII temp tree before testing operations so the
+    // result measures router semantics rather than that upstream Windows encoding limitation.
+    let test_temp = tempdir().expect("create temporary real router workspace");
+    let llama_root = test_temp.path().join("router llama cpp build");
+    copy_tree(&source_llama_root, &llama_root);
+
+    let source_installation =
+        inspect_installation(&source_llama_root).expect("inspect source pinned llama.cpp runtime");
     let installation =
-        inspect_installation(&llama_root).expect("inspect pinned llama.cpp installation");
+        inspect_installation(&llama_root).expect("inspect ASCII pinned llama.cpp runtime clone");
+    let source_server = source_installation
+        .server
+        .as_ref()
+        .expect("source pinned runtime must expose llama-server.exe");
     let server = installation
         .server
         .as_ref()
-        .expect("pinned runtime must expose llama-server.exe");
+        .expect("ASCII runtime clone must expose llama-server.exe");
+    assert_eq!(
+        server.sha256, source_server.sha256,
+        "ASCII router runtime clone must preserve the selected llama-server identity"
+    );
 
-    // b10472 on Windows cannot open a Unicode --models-dir even though LlamaManager can read
-    // and fingerprint the same files. Keep the canonical Unicode fixtures intact for the M1/M2
-    // validation, and copy their exact bytes to an ASCII temporary router directory so this test
-    // measures router operation semantics rather than that upstream path-encoding limitation.
-    let library_temp = tempdir().expect("create temporary M2 model library");
-    let model_root = library_temp.path().join("Router Models with spaces");
+    // b10472 also cannot open a Unicode --models-dir. Keep the canonical Unicode fixtures intact
+    // for M1/M2 validation and copy their exact bytes to an ASCII router directory.
+    let model_root = test_temp.path().join("Router Models with spaces");
     fs::create_dir_all(&model_root).expect("create ASCII router model directory");
     let model_a = model_root.join("stories 15M router.gguf");
     let model_b = model_root.join("TinyLlama router v2.gguf");
@@ -130,7 +169,7 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         "secondary router fixture must preserve published GGUF identity"
     );
 
-    let database_path = library_temp.path().join("router-operations.sqlite");
+    let database_path = test_temp.path().join("router-operations.sqlite");
     Database::open(&database_path).expect("initialize base persistence schema");
     let store = ModelStore::open(&database_path).expect("initialize M2 model library schema");
     let scan = scan_root(&store, &model_root, &AtomicBool::new(false), |_| {})
@@ -328,6 +367,9 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         "github_sha": env::var("GITHUB_SHA").ok(),
         "runner_os": env::var("RUNNER_OS").ok(),
         "llama_release_tag": env::var("LLAMAMANAGER_LLAMA_RELEASE_TAG").ok(),
+        "source_runtime_root_unicode_path": source_llama_root,
+        "runtime_root": llama_root,
+        "source_server_path": source_server.path,
         "server_path": server.path,
         "server_sha256": server.sha256,
         "router_argv": argv,
@@ -345,6 +387,8 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         "final_unload": final_unload,
         "cancelled_before_mutation": true,
         "final_registry": final_registry,
+        "upstream_unicode_runtime_spawn_supported": false,
+        "upstream_unicode_runtime_spawn_reason": "pinned b10472 on Windows can launch its router from a Unicode path but child model-server spawning mangles the executable path through the active multi-byte code page; exact pinned runtime bytes were copied to an ASCII temporary directory for operation semantics validation",
         "upstream_unicode_models_dir_supported": false,
         "upstream_unicode_models_dir_reason": "pinned b10472 on Windows fails to initialize router mode when --models-dir contains Unicode; exact published GGUF bytes were copied to an ASCII temporary directory for operation semantics validation",
         "dynamic_default_model_mutation_supported": false,
