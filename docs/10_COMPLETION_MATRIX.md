@@ -51,7 +51,7 @@ Legend: `✅` satisfied, `🟡` implemented/partially evidenced but not closure-
 | **M0 Clean baseline** | — | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M1 Real installation → benchmark** | #1 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M2 Model library + compatibility** | #2 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **M3 `models.ini`** | #3 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **M3 `models.ini`** | #3 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M4 Server lifecycle** | #4 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M5 Router + switching** | #5 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M6 Live telemetry** | #6 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -112,21 +112,23 @@ The interactive closure used a text-only model, so mmproj behaviour is closure-g
 
 ## M3 — `models.ini` parser, editor and generator
 
+**Current state:** C5 — Complete. Final interactive/runtime evidence: `docs/evidence/M3_MODELS_INI_2026-08-18.md`.
+
 C5 requires:
 
-- [ ] Parser handles global `[*]` defaults and per-model sections.
-- [ ] Comments, ordering where required, blank lines, and unknown keys survive round-trip edits.
-- [ ] Inheritance/effective-value calculation has automated fixtures.
-- [ ] Structured editor and raw editor operate on one canonical model and cannot silently diverge.
-- [ ] Validation blocks invalid configuration from being applied.
-- [ ] Pre-apply diff clearly shows effective changes.
-- [ ] Managed config mode and external-file mode are both verified.
-- [ ] External-file writes create recoverable backups before mutation.
-- [ ] Restore path is tested against a deliberately bad edit.
-- [ ] Profile generator emits only capabilities supported by the selected runtime evidence.
-- [ ] Heavily commented, unknown-key, CRLF, spaces, and Unicode fixtures round-trip successfully.
-- [ ] No full-file destructive rewrite occurs when a minimal safe edit is possible.
-- [ ] Restart preserves the selected/managed configuration state.
+- [x] Parser handles global `[*]` defaults and per-model sections.
+- [x] Comments, ordering where required, blank lines, and unknown keys survive round-trip edits.
+- [x] Inheritance/effective-value calculation has automated fixtures.
+- [x] Structured editor and raw editor operate on one canonical model and cannot silently diverge.
+- [x] Validation blocks invalid configuration from being applied.
+- [x] Pre-apply diff clearly shows effective changes.
+- [x] Managed config mode and external-file mode are both verified.
+- [x] External-file writes create recoverable backups before mutation.
+- [x] Restore path is tested against a deliberately bad edit.
+- [x] Profile generator emits only capabilities supported by the selected runtime evidence.
+- [x] Heavily commented, unknown-key, CRLF, spaces, and Unicode fixtures round-trip successfully.
+- [x] No full-file destructive rewrite occurs when a minimal safe edit is possible.
+- [x] Restart preserves the selected/managed configuration state.
 
 ## M4 — Managed `llama-server` lifecycle
 
