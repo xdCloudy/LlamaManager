@@ -3,9 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::telemetry_history::{
-    MetricSupport, SeriesKey, TimeSeriesSample, TimeSeriesState,
-};
+use crate::telemetry_history::{MetricSupport, SeriesKey, TimeSeriesSample, TimeSeriesState};
 
 pub const DEFAULT_ALERT_HISTORY_CAPACITY: usize = 512;
 pub const DEFAULT_ALERT_EVIDENCE_CAPACITY: usize = 64;
@@ -167,7 +165,9 @@ pub enum AlertError {
     InvalidEvidenceCapacity,
     #[error("sample source does not match the series key")]
     SourceMismatch,
-    #[error("sample timestamp moved backwards for alert state: previous={previous}, incoming={incoming}")]
+    #[error(
+        "sample timestamp moved backwards for alert state: previous={previous}, incoming={incoming}"
+    )]
     OutOfOrderSample { previous: u64, incoming: u64 },
 }
 
@@ -237,6 +237,7 @@ pub struct AlertEvaluation {
 #[derive(Debug, Clone)]
 struct PendingWindow {
     started_at_unix_ms: u64,
+    observed_live_samples: usize,
     samples: VecDeque<AlertEvidenceSample>,
 }
 
@@ -249,11 +250,13 @@ impl PendingWindow {
         });
         Self {
             started_at_unix_ms: timestamp_unix_ms,
+            observed_live_samples: 1,
             samples,
         }
     }
 
     fn push(&mut self, timestamp_unix_ms: u64, value: f64, capacity: usize) {
+        self.observed_live_samples = self.observed_live_samples.saturating_add(1);
         self.samples.push_back(AlertEvidenceSample {
             timestamp_unix_ms,
             value,
@@ -264,7 +267,7 @@ impl PendingWindow {
     }
 
     fn sample_count(&self) -> usize {
-        self.samples.len()
+        self.observed_live_samples
     }
 
     fn elapsed_ms(&self, timestamp_unix_ms: u64) -> u64 {
@@ -491,9 +494,9 @@ fn evaluate_live(
         return (AlertPresentationState::Inactive, None, None);
     }
 
-    let window = state.trigger_window.get_or_insert_with(|| {
-        PendingWindow::new(timestamp_unix_ms, value, evidence_capacity)
-    });
+    let window = state
+        .trigger_window
+        .get_or_insert_with(|| PendingWindow::new(timestamp_unix_ms, value, evidence_capacity));
     if window.started_at_unix_ms != timestamp_unix_ms {
         window.push(timestamp_unix_ms, value, evidence_capacity);
     }
@@ -576,7 +579,8 @@ fn validate_sample_source(key: &SeriesKey, sample: &TimeSeriesSample) -> Result<
 }
 
 fn live_value(sample: &TimeSeriesSample) -> Option<f64> {
-    if sample.support != MetricSupport::Supported || !matches!(sample.state, TimeSeriesState::Live) {
+    if sample.support != MetricSupport::Supported || !matches!(sample.state, TimeSeriesState::Live)
+    {
         return None;
     }
     sample.value.filter(|value| value.is_finite())
@@ -676,6 +680,21 @@ mod tests {
         assert_eq!(event.evidence.samples.len(), 3);
         assert!(event.evidence.identity_disclosure.contains("GPU-1"));
         assert_eq!(engine.history().len(), 1);
+    }
+
+    #[test]
+    fn evidence_capacity_does_not_change_trigger_sample_count() {
+        let key = key();
+        let mut engine = AlertEngine::with_capacities(vec![rule()], 16, 2).unwrap();
+
+        engine.observe(&key, &live(1_000, 81.0)).unwrap();
+        engine.observe(&key, &live(2_000, 82.0)).unwrap();
+        let evaluation = engine.observe(&key, &live(3_000, 83.0)).unwrap().remove(0);
+
+        assert_eq!(evaluation.state, AlertPresentationState::Active);
+        let event = evaluation.transition.unwrap();
+        assert_eq!(event.evidence.samples.len(), 2);
+        assert_eq!(event.evidence.window_started_at_unix_ms, 1_000);
     }
 
     #[test]
@@ -785,15 +804,17 @@ mod tests {
         let mut engine = AlertEngine::new(vec![rule()]).unwrap();
         engine.observe(&key, &live(1_000, 82.0)).unwrap();
 
-        assert!(engine
-            .update_threshold(
-                "gpu-temperature-warning",
-                AlertThreshold {
-                    trigger: 70.0,
-                    clear: 75.0,
-                }
-            )
-            .is_err());
+        assert!(
+            engine
+                .update_threshold(
+                    "gpu-temperature-warning",
+                    AlertThreshold {
+                        trigger: 70.0,
+                        clear: 75.0,
+                    }
+                )
+                .is_err()
+        );
         assert_eq!(engine.rules()[0].threshold.trigger, 80.0);
 
         engine
@@ -823,12 +844,8 @@ mod tests {
             engine.observe(&first, &live(timestamp, 90.0)).unwrap();
         }
 
-        let second_sample = TimeSeriesSample::live(
-            3_000,
-            90.0,
-            SampleSource::from_key(&second),
-        )
-        .unwrap();
+        let second_sample =
+            TimeSeriesSample::live(3_000, 90.0, SampleSource::from_key(&second)).unwrap();
         let evaluation = engine.observe(&second, &second_sample).unwrap().remove(0);
         assert_eq!(evaluation.state, AlertPresentationState::Pending);
         assert_eq!(engine.history().len(), 1);
@@ -852,6 +869,9 @@ mod tests {
         }
 
         assert_eq!(engine.history().len(), 2);
-        assert_eq!(engine.history().back().unwrap().kind, AlertEventKind::Resolved);
+        assert_eq!(
+            engine.history().back().unwrap().kind,
+            AlertEventKind::Resolved
+        );
     }
 }

@@ -26,10 +26,8 @@ pub struct OverheadBudget {
 impl Default for OverheadBudget {
     fn default() -> Self {
         Self {
-            max_idle_cpu_percent_total_capacity:
-                DEFAULT_IDLE_CPU_BUDGET_PERCENT_TOTAL_CAPACITY,
-            max_active_cpu_percent_total_capacity:
-                DEFAULT_ACTIVE_CPU_BUDGET_PERCENT_TOTAL_CAPACITY,
+            max_idle_cpu_percent_total_capacity: DEFAULT_IDLE_CPU_BUDGET_PERCENT_TOTAL_CAPACITY,
+            max_active_cpu_percent_total_capacity: DEFAULT_ACTIVE_CPU_BUDGET_PERCENT_TOTAL_CAPACITY,
             max_peak_private_growth_bytes: DEFAULT_PRIVATE_MEMORY_GROWTH_BUDGET_BYTES,
             max_p95_poll_fraction_of_cadence: DEFAULT_P95_POLL_FRACTION_OF_CADENCE,
         }
@@ -178,7 +176,6 @@ pub struct TelemetryOverheadRecorder {
     cadence_ms: u64,
     budget: OverheadBudget,
     start: ProcessResourceSample,
-    latest: ProcessResourceSample,
     peak_private_bytes: u64,
     peak_working_set_bytes: u64,
     polls: Vec<PollTimingSample>,
@@ -203,7 +200,6 @@ impl TelemetryOverheadRecorder {
             cadence_ms,
             budget: budget.validate()?,
             start,
-            latest: start,
             peak_private_bytes: start.private_bytes,
             peak_working_set_bytes: start.working_set_bytes,
             polls: Vec::new(),
@@ -223,7 +219,6 @@ impl TelemetryOverheadRecorder {
         }
         self.peak_private_bytes = self.peak_private_bytes.max(resources.private_bytes);
         self.peak_working_set_bytes = self.peak_working_set_bytes.max(resources.working_set_bytes);
-        self.latest = resources;
         self.polls.push(timing);
         Ok(())
     }
@@ -261,7 +256,8 @@ impl TelemetryOverheadRecorder {
             / f64::from(self.start.logical_processor_count)
             * 100.0;
 
-        let mut poll_durations: Vec<f64> = self.polls.iter().map(|sample| sample.duration_ms).collect();
+        let mut poll_durations: Vec<f64> =
+            self.polls.iter().map(|sample| sample.duration_ms).collect();
         poll_durations.sort_by(f64::total_cmp);
         let sum: f64 = poll_durations.iter().sum();
         let mean_poll_duration_ms = sum / poll_durations.len() as f64;
@@ -355,10 +351,7 @@ fn assess_budget(
             observed: cpu_percent_total_capacity,
             limit: cpu_limit,
             unit: "percent_total_host_cpu_capacity".to_owned(),
-            reason: format!(
-                "monitor process CPU exceeded the {:?} phase budget",
-                phase
-            ),
+            reason: format!("monitor process CPU exceeded the {:?} phase budget", phase),
         });
     }
     if peak_private_growth_bytes > budget.max_peak_private_growth_bytes {
@@ -367,7 +360,8 @@ fn assess_budget(
             observed: peak_private_growth_bytes as f64,
             limit: budget.max_peak_private_growth_bytes as f64,
             unit: "bytes".to_owned(),
-            reason: "monitor process private-memory growth exceeded the configured budget".to_owned(),
+            reason: "monitor process private-memory growth exceeded the configured budget"
+                .to_owned(),
         });
     }
     if p95_poll_fraction_of_cadence > budget.max_p95_poll_fraction_of_cadence {
@@ -445,8 +439,8 @@ mod platform {
         fn K32GetProcessMemoryInfo(process: *mut c_void, counters: *mut c_void, cb: u32) -> i32;
     }
 
-    pub(super) fn capture_current_process_resources(
-    ) -> Result<ProcessResourceSample, OverheadError> {
+    pub(super) fn capture_current_process_resources() -> Result<ProcessResourceSample, OverheadError>
+    {
         // SAFETY: GetCurrentProcess returns a process pseudo-handle valid in the current process.
         let process = unsafe { GetCurrentProcess() };
         if process.is_null() {
@@ -521,8 +515,8 @@ mod platform {
 mod platform {
     use super::{OverheadError, ProcessResourceSample};
 
-    pub(super) fn capture_current_process_resources(
-    ) -> Result<ProcessResourceSample, OverheadError> {
+    pub(super) fn capture_current_process_resources() -> Result<ProcessResourceSample, OverheadError>
+    {
         Err(OverheadError::UnsupportedPlatform)
     }
 }
@@ -591,7 +585,11 @@ mod tests {
         )
         .unwrap();
         for index in 0..20_u64 {
-            let duration_ms = if index == 19 { 80.0 } else { (index + 1) as f64 };
+            let duration_ms = if index == 19 {
+                80.0
+            } else {
+                (index + 1) as f64
+            };
             recorder
                 .record_poll(
                     PollTimingSample {
@@ -638,31 +636,39 @@ mod tests {
             .unwrap();
         assert!(!measurement.assessment.within_budget);
         assert_eq!(measurement.assessment.violations.len(), 3);
-        assert!(measurement
-            .assessment
-            .violations
-            .iter()
-            .any(|item| item.metric == BudgetMetric::CpuPercentTotalCapacity));
-        assert!(measurement
-            .assessment
-            .violations
-            .iter()
-            .any(|item| item.metric == BudgetMetric::PeakPrivateGrowthBytes));
-        assert!(measurement
-            .assessment
-            .violations
-            .iter()
-            .any(|item| item.metric == BudgetMetric::P95PollFractionOfCadence));
+        assert!(
+            measurement
+                .assessment
+                .violations
+                .iter()
+                .any(|item| item.metric == BudgetMetric::CpuPercentTotalCapacity)
+        );
+        assert!(
+            measurement
+                .assessment
+                .violations
+                .iter()
+                .any(|item| item.metric == BudgetMetric::PeakPrivateGrowthBytes)
+        );
+        assert!(
+            measurement
+                .assessment
+                .violations
+                .iter()
+                .any(|item| item.metric == BudgetMetric::P95PollFractionOfCadence)
+        );
     }
 
     #[test]
     fn invalid_budget_and_counter_regressions_are_rejected() {
-        assert!(OverheadBudget {
-            max_p95_poll_fraction_of_cadence: 1.1,
-            ..OverheadBudget::default()
-        }
-        .validate()
-        .is_err());
+        assert!(
+            OverheadBudget {
+                max_p95_poll_fraction_of_cadence: 1.1,
+                ..OverheadBudget::default()
+            }
+            .validate()
+            .is_err()
+        );
 
         let start = sample(1_000, 100, 1_000, 2_000);
         let mut recorder = TelemetryOverheadRecorder::new(
@@ -680,7 +686,10 @@ mod tests {
                 },
                 sample(1_100, 99, 1_000, 2_000),
             ),
-            Err(OverheadError::CpuCounterMovedBackwards { start: 100, end: 99 })
+            Err(OverheadError::CpuCounterMovedBackwards {
+                start: 100,
+                end: 99
+            })
         );
     }
 }

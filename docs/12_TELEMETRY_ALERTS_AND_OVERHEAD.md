@@ -77,7 +77,7 @@ Milestone 6 uses the following **engineering targets**, not claims about all har
 
 CPU is measured from the LlamaManager/test process's Windows `GetProcessTimes` kernel+user counters and divided by elapsed wall time and logical processor count. This intentionally measures the monitor process rather than charging llama.cpp inference CPU to LlamaManager.
 
-Private bytes and working set are sampled with Windows process memory counters. Poll latency measures the actual CPU/RAM + NVIDIA NVML telemetry polling work. The real validation uses a one-second polling cadence.
+Private bytes and working set are sampled with Windows process memory counters. Poll latency measures the actual CPU/RAM + NVIDIA NVML provider work plus telemetry history insertion, alert evaluation, and chart projection. The real validation uses a one-second polling cadence.
 
 If a target is exceeded, the evidence remains valid; the result must be disclosed as a budget violation rather than rounded away or converted to a pass. The budget can only be considered satisfied after the real Windows idle and active-inference harness has been run on representative hardware.
 

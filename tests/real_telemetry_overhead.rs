@@ -17,12 +17,11 @@ use llamamanager::{
     gguf::inspect_gguf,
     gpu_telemetry::{GpuTelemetryProvider, NvidiaGpuTelemetryProvider},
     hardware_telemetry::{
-        HardwareTelemetryProvider, TelemetryReading, TelemetryState, WindowsHardwareTelemetryProvider,
+        HardwareTelemetryProvider, TelemetryReading, TelemetryState,
+        WindowsHardwareTelemetryProvider,
     },
     llama::inspect_installation,
-    telemetry_alerts::{
-        AlertComparator, AlertEngine, AlertRule, AlertSeverity, AlertThreshold,
-    },
+    telemetry_alerts::{AlertComparator, AlertEngine, AlertRule, AlertSeverity, AlertThreshold},
     telemetry_history::{
         ChartOptions, HistoryPolicy, SampleSource, SeriesIdentity, SeriesKey, TimeSeriesSample,
         TimeSeriesStore,
@@ -181,7 +180,11 @@ fn run_monitor_phase(
         if remaining.is_zero() {
             break;
         }
-        thread::sleep(POLL_CADENCE.saturating_sub(poll_started.elapsed()).min(remaining));
+        thread::sleep(
+            POLL_CADENCE
+                .saturating_sub(poll_started.elapsed())
+                .min(remaining),
+        );
     }
 
     recorder
