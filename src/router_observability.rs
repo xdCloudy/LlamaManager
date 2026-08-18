@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
     path::PathBuf,
@@ -87,7 +87,7 @@ pub struct RouterModelObservability {
 impl RouterModelObservability {
     pub fn eviction_safety(&self) -> RouterEvictionSafety {
         if !matches!(
-            self.model.status.phase,
+            &self.model.status.phase,
             RouterModelPhase::Loaded | RouterModelPhase::Sleeping
         ) {
             return RouterEvictionSafety::NotApplicable {
@@ -278,7 +278,10 @@ fn observability_for_model(
         if let Some(error) = supplemental_error {
             format!("supplemental /models evidence unavailable for {field}: {error}")
         } else if supplemental.is_none() {
-            format!("supplemental /models response did not contain model `{}`", model.id)
+            format!(
+                "supplemental /models response did not contain model `{}`",
+                model.id
+            )
         } else {
             format!("selected router /models payload does not expose {field}")
         }
@@ -386,9 +389,9 @@ fn parse_supplemental_model_evidence(
 
     let mut parsed = BTreeMap::new();
     for entry in entries {
-        let object = entry.as_object().ok_or_else(|| {
-            protocol_error("/models", "model entry was not an object", body)
-        })?;
+        let object = entry
+            .as_object()
+            .ok_or_else(|| protocol_error("/models", "model entry was not an object", body))?;
         let id = object
             .get("id")
             .and_then(Value::as_str)
@@ -409,10 +412,8 @@ fn parse_supplemental_model_evidence(
         }
 
         let resident = first_bool(object, &["resident", "is_resident"]);
-        let active_requests = first_u64(
-            object,
-            &["active_requests", "req_count", "requests_active"],
-        );
+        let active_requests =
+            first_u64(object, &["active_requests", "req_count", "requests_active"]);
         let last_used_ms = first_i64(object, &["last_used_ms", "last_used"]);
         let lru_rank = first_u64(object, &["lru_rank", "eviction_rank"]);
         let evictable = first_bool(object, &["evictable", "can_evict"]);
@@ -534,18 +535,16 @@ fn connect(
     })
 }
 
-fn parse_http_json_response(
-    path: &str,
-    bytes: &[u8],
-) -> Result<String, RouterObservabilityError> {
+fn parse_http_json_response(path: &str, bytes: &[u8]) -> Result<String, RouterObservabilityError> {
     let response = String::from_utf8_lossy(bytes);
-    let status_line = response
-        .lines()
-        .next()
-        .ok_or_else(|| RouterObservabilityError::Transport {
-            path: path.into(),
-            message: "empty HTTP response".into(),
-        })?;
+    let status_line =
+        response
+            .lines()
+            .next()
+            .ok_or_else(|| RouterObservabilityError::Transport {
+                path: path.into(),
+                message: "empty HTTP response".into(),
+            })?;
     let status_code = status_line
         .split_whitespace()
         .nth(1)
@@ -581,11 +580,7 @@ fn transport_error(path: &str, error: std::io::Error) -> RouterObservabilityErro
     }
 }
 
-fn protocol_error(
-    path: &str,
-    message: impl Into<String>,
-    body: &str,
-) -> RouterObservabilityError {
+fn protocol_error(path: &str, message: impl Into<String>, body: &str) -> RouterObservabilityError {
     RouterObservabilityError::ProtocolDrift {
         path: path.into(),
         message: message.into(),
@@ -621,7 +616,10 @@ impl RouterUiState {
         let paths = match AppPaths::detect() {
             Ok(paths) => Some(paths),
             Err(error) => {
-                notice = Some((false, format!("Could not resolve application paths: {error}")));
+                notice = Some((
+                    false,
+                    format!("Could not resolve application paths: {error}"),
+                ));
                 None
             }
         };
@@ -686,7 +684,10 @@ fn refresh_persisted_runtime(mut state: RouterUiSignal) {
         match result {
             Ok(installation) => {
                 current.installation = installation;
-                current.notice = Some((true, "Reloaded persisted llama.cpp runtime evidence.".into()));
+                current.notice = Some((
+                    true,
+                    "Reloaded persisted llama.cpp runtime evidence.".into(),
+                ));
             }
             Err(error) => current.notice = Some((false, error.to_string())),
         }
@@ -698,8 +699,7 @@ fn refresh_router(mut state: RouterUiSignal) {
     let Some(installation) = snapshot.installation else {
         state.write().notice = Some((
             false,
-            "No persisted llama.cpp installation is selected. Select one in CORE LAB first."
-                .into(),
+            "No persisted llama.cpp installation is selected. Select one in CORE LAB first.".into(),
         ));
         return;
     };
@@ -749,7 +749,10 @@ fn refresh_router(mut state: RouterUiSignal) {
         let error = result.as_ref().err().cloned();
         current.tracker.reconcile(result);
         if succeeded {
-            current.notice = Some((true, "Router observability snapshot reconciled from live evidence.".into()));
+            current.notice = Some((
+                true,
+                "Router observability snapshot reconciled from live evidence.".into(),
+            ));
         } else if let Some(error) = error {
             current.notice = Some((false, error));
         }
@@ -943,7 +946,7 @@ pub fn RouterObservabilityView() -> Element {
                         h2 { "MODEL ROUTING + RESIDENCY" }
                     }
                     if let Some(current) = current {
-                        span { class: "ro-muted", "observed {current.observed_at_unix_ms} · {} models", current.models.len() }
+                        span { class: "ro-muted", {format!("observed {} · {} models", current.observed_at_unix_ms, current.models.len())} }
                     }
                 }
                 div { class: "ro-panel-body",
@@ -974,7 +977,7 @@ pub fn RouterObservabilityView() -> Element {
                                                 div { class: "ro-stats",
                                                     div { class: "ro-stat",
                                                         span { "ROUTER STATUS" }
-                                                        strong { class: if matches!(observed.model.status.phase, RouterModelPhase::Loaded | RouterModelPhase::Sleeping) { "ro-state-live" } else { "ro-state-warn" }, "{phase}" }
+                                                        strong { class: if matches!(&observed.model.status.phase, RouterModelPhase::Loaded | RouterModelPhase::Sleeping) { "ro-state-live" } else { "ro-state-warn" }, "{phase}" }
                                                         small { "direct /models status evidence" }
                                                     }
                                                     div { class: "ro-stat",
@@ -1035,8 +1038,13 @@ pub fn RouterObservabilityView() -> Element {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
-    use crate::router::{RouterEndpointCapabilities, RouterFeatureEvidence, RouterFeatureState, RouterLibraryLink, RouterLibraryLinkKind, RouterModelStatus, RouterStaticCapabilities};
+    use crate::router::{
+        RouterEndpointCapabilities, RouterFeatureEvidence, RouterFeatureState, RouterLibraryLink,
+        RouterLibraryLinkKind, RouterModelStatus, RouterStaticCapabilities,
+    };
 
     fn model(phase: RouterModelPhase) -> RouterModel {
         RouterModel {
@@ -1096,11 +1104,27 @@ mod tests {
 
     #[test]
     fn absent_router_fields_stay_unavailable() {
-        let observed = observability_for_model(model(RouterModelPhase::Loaded), Some(&SupplementalModelEvidence::default()), None);
-        assert_eq!(observed.residency.availability, EvidenceAvailability::Unavailable);
-        assert_eq!(observed.active_requests.availability, EvidenceAvailability::Unavailable);
-        assert_eq!(observed.lru_rank.availability, EvidenceAvailability::Unavailable);
-        assert!(matches!(observed.eviction_safety(), RouterEvictionSafety::Unknown { .. }));
+        let observed = observability_for_model(
+            model(RouterModelPhase::Loaded),
+            Some(&SupplementalModelEvidence::default()),
+            None,
+        );
+        assert_eq!(
+            observed.residency.availability,
+            EvidenceAvailability::Unavailable
+        );
+        assert_eq!(
+            observed.active_requests.availability,
+            EvidenceAvailability::Unavailable
+        );
+        assert_eq!(
+            observed.lru_rank.availability,
+            EvidenceAvailability::Unavailable
+        );
+        assert!(matches!(
+            observed.eviction_safety(),
+            RouterEvictionSafety::Unknown { .. }
+        ));
     }
 
     #[test]
@@ -1134,11 +1158,14 @@ mod tests {
         );
         assert_eq!(observed.last_used_ms.value, Some(1234));
         assert_eq!(observed.lru_rank.value, None);
-        assert_eq!(observed.eviction_safety(), RouterEvictionSafety::SafeObserved);
+        assert_eq!(
+            observed.eviction_safety(),
+            RouterEvictionSafety::SafeObserved
+        );
     }
 
     #[test]
-    fn tracker_marks_retained_snapshot_stale_after_refresh_failure() {
+    fn tracker_marks_retained_snapshot_stale_on_disconnect_and_recovers() {
         let mut tracker = RouterObservabilityTracker::default();
         tracker.reconcile(Ok(RouterObservabilitySnapshot {
             registry: registry(),
