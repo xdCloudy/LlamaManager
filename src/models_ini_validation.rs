@@ -175,15 +175,13 @@ fn validate_known_value(key: &str, value: &str, issues: &mut Vec<ValidationIssue
                 value,
             )),
         },
-        "host" | "model" | "mmproj" => {
-            if value.trim().is_empty() {
-                issues.push(value_error(
-                    key,
-                    "nonempty_value_required",
-                    format!("{key} cannot be empty"),
-                    value,
-                ));
-            }
+        "host" | "model" | "mmproj" if value.trim().is_empty() => {
+            issues.push(value_error(
+                key,
+                "nonempty_value_required",
+                format!("{key} cannot be empty"),
+                value,
+            ));
         }
         _ => {}
     }
