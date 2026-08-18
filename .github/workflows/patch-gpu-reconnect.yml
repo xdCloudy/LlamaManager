@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    # Trigger after the workflow exists on the branch.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +43,8 @@ jobs:
         }
     }
 '@
+          $old = $old.Replace("`r`n", "`n")
+          $new = $new.Replace("`r`n", "`n")
           if (-not $text.Contains($old)) {
             throw 'NVML backend replacement anchor not found'
           }
