@@ -2,7 +2,7 @@ use std::{
     collections::BTreeSet,
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::Duration,
 };
 
@@ -190,7 +190,7 @@ pub struct RouterModel {
     pub sha256: Option<String>,
     pub status: RouterModelStatus,
     /// `Some` only when the router payload explicitly reports residency.
-    /// LlamaWave does not infer residency from filenames or from a merely running process.
+    /// LlamaWave does not infer residency from filenames or process existence.
     pub resident: Option<bool>,
     pub input_modalities: Vec<String>,
     pub output_modalities: Vec<String>,
@@ -213,9 +213,7 @@ pub struct RouterDisconnectEvidence {
     pub observed_at_unix_ms: u128,
 }
 
-/// Tracks the latest live router snapshot without converting a disconnect into stale success.
-/// A disconnected tracker can retain its previous snapshot for diagnostics, but callers must
-/// inspect `disconnect` before treating that snapshot as current.
+/// Retains the last snapshot for diagnostics but marks it stale on disconnect.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RouterRegistryTracker {
     pub current: Option<RouterRegistry>,
@@ -292,33 +290,22 @@ pub fn discover_router_registry(
     let props = request_json(endpoint, "GET", "/props", None, timeout)?;
     ensure_success("/props", &props)?;
     let role = parse_role(&props.body)?;
-
-    let props_evidence = RouterFeatureEvidence::supported(
-        "GET /props returned a recognized live llama-server role",
-    );
+    let props_evidence =
+        RouterFeatureEvidence::supported("GET /props returned a recognized live llama-server role");
 
     if role == RouterRole::SingleModel {
+        let reason = "live /props role is a single-model server, not router mode";
         return Ok(RouterRegistry {
             endpoint: endpoint.authority(),
             role,
             static_capabilities,
             endpoints: RouterEndpointCapabilities {
                 props: props_evidence,
-                list_models: RouterFeatureEvidence::unsupported(
-                    "live /props role is a single-model server, not router mode",
-                ),
-                reload_models: RouterFeatureEvidence::unsupported(
-                    "live /props role is a single-model server, not router mode",
-                ),
-                load_model: RouterFeatureEvidence::unsupported(
-                    "live /props role is a single-model server, not router mode",
-                ),
-                unload_model: RouterFeatureEvidence::unsupported(
-                    "live /props role is a single-model server, not router mode",
-                ),
-                model_events: RouterFeatureEvidence::unsupported(
-                    "live /props role is a single-model server, not router mode",
-                ),
+                list_models: RouterFeatureEvidence::unsupported(reason),
+                reload_models: RouterFeatureEvidence::unsupported(reason),
+                load_model: RouterFeatureEvidence::unsupported(reason),
+                unload_model: RouterFeatureEvidence::unsupported(reason),
+                model_events: RouterFeatureEvidence::unsupported(reason),
             },
             models: Vec::new(),
             observed_at_unix_ms: now_ms(),
@@ -328,7 +315,6 @@ pub fn discover_router_registry(
     let models_response = request_json(endpoint, "GET", "/models", None, timeout)?;
     ensure_success("/models", &models_response)?;
     let mut models = parse_models(&models_response.body)?;
-
     if let Some(store) = model_store {
         for model in &mut models {
             model.library_link = map_to_library(model, store)?;
@@ -344,9 +330,6 @@ pub fn discover_router_registry(
             list_models: RouterFeatureEvidence::supported(
                 "GET /models returned a valid live router registry",
             ),
-            // These endpoints mutate state or establish a long-lived stream. #38 deliberately
-            // does not pretend they are supported merely because a newer llama.cpp documents
-            // them; #39 verifies control operations against the selected runtime.
             reload_models: RouterFeatureEvidence::unknown(
                 "not mutated during discovery; verify GET /models?reload=1 before enabling",
             ),
@@ -367,8 +350,7 @@ pub fn discover_router_registry(
 
 fn help_has_option(help: &str, option: &str) -> bool {
     help.split_whitespace().any(|token| {
-        token
-            .trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'))
+        token.trim_matches(|c: char| matches!(c, ',' | ';' | ':' | '[' | ']' | '(' | ')' | '`'))
             == option
     })
 }
@@ -420,30 +402,7 @@ fn request_json(
         .take(MAX_ROUTER_RESPONSE_BYTES)
         .read_to_end(&mut bytes)
         .map_err(|error| transport_error(path, error))?;
-
-    let response = String::from_utf8_lossy(&bytes);
-    let status_line = response
-        .lines()
-        .next()
-        .ok_or_else(|| RouterDiscoveryError::Transport {
-            path: path.into(),
-            message: "empty HTTP response".into(),
-        })?;
-    let status_code = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|value| value.parse::<u16>().ok())
-        .ok_or_else(|| RouterDiscoveryError::Transport {
-            path: path.into(),
-            message: format!("invalid HTTP status line: {status_line}"),
-        })?;
-    let body = response
-        .split_once("\r\n\r\n")
-        .map(|(_, value)| value)
-        .unwrap_or("")
-        .to_string();
-
-    Ok(RawHttpResponse { status_code, body })
+    parse_http_response(path, &bytes)
 }
 
 fn connect(
@@ -501,6 +460,31 @@ fn transport_error(path: &str, error: std::io::Error) -> RouterDiscoveryError {
     }
 }
 
+fn parse_http_response(path: &str, bytes: &[u8]) -> Result<RawHttpResponse, RouterDiscoveryError> {
+    let response = String::from_utf8_lossy(bytes);
+    let status_line = response
+        .lines()
+        .next()
+        .ok_or_else(|| RouterDiscoveryError::Transport {
+            path: path.into(),
+            message: "empty HTTP response".into(),
+        })?;
+    let status_code = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or_else(|| RouterDiscoveryError::Transport {
+            path: path.into(),
+            message: format!("invalid HTTP status line: {status_line}"),
+        })?;
+    let body = response
+        .split_once("\r\n\r\n")
+        .map(|(_, value)| value)
+        .unwrap_or("")
+        .to_string();
+    Ok(RawHttpResponse { status_code, body })
+}
+
 fn ensure_success(path: &str, response: &RawHttpResponse) -> Result<(), RouterDiscoveryError> {
     match response.status_code {
         200..=299 => Ok(()),
@@ -521,19 +505,17 @@ fn ensure_success(path: &str, response: &RawHttpResponse) -> Result<(), RouterDi
 }
 
 fn parse_role(body: &str) -> Result<RouterRole, RouterDiscoveryError> {
-    let value: Value = serde_json::from_str(body).map_err(|error| protocol_drift(
-        "/props",
-        format!("response was not valid JSON: {error}"),
-        body,
-    ))?;
+    let value: Value = serde_json::from_str(body).map_err(|error| {
+        protocol_drift(
+            "/props",
+            format!("response was not valid JSON: {error}"),
+            body,
+        )
+    })?;
     let role = value
         .get("role")
         .and_then(Value::as_str)
-        .ok_or_else(|| protocol_drift(
-            "/props",
-            "expected string field `role`",
-            body,
-        ))?;
+        .ok_or_else(|| protocol_drift("/props", "expected string field `role`", body))?;
 
     match role {
         "router" => Ok(RouterRole::Router),
@@ -547,21 +529,25 @@ fn parse_role(body: &str) -> Result<RouterRole, RouterDiscoveryError> {
 }
 
 fn parse_models(body: &str) -> Result<Vec<RouterModel>, RouterDiscoveryError> {
-    let value: Value = serde_json::from_str(body).map_err(|error| protocol_drift(
-        "/models",
-        format!("response was not valid JSON: {error}"),
-        body,
-    ))?;
+    let value: Value = serde_json::from_str(body).map_err(|error| {
+        protocol_drift(
+            "/models",
+            format!("response was not valid JSON: {error}"),
+            body,
+        )
+    })?;
     let entries = match &value {
         Value::Array(entries) => entries,
         Value::Object(object) => object
             .get("data")
             .and_then(Value::as_array)
-            .ok_or_else(|| protocol_drift(
-                "/models",
-                "expected an array response or object field `data` containing an array",
-                body,
-            ))?,
+            .ok_or_else(|| {
+                protocol_drift(
+                    "/models",
+                    "expected an array response or object field `data` containing an array",
+                    body,
+                )
+            })?,
         _ => {
             return Err(protocol_drift(
                 "/models",
@@ -578,30 +564,34 @@ fn parse_models(body: &str) -> Result<Vec<RouterModel>, RouterDiscoveryError> {
 }
 
 fn parse_model(entry: &Value, full_body: &str) -> Result<RouterModel, RouterDiscoveryError> {
-    let object = entry.as_object().ok_or_else(|| protocol_drift(
-        "/models",
-        "model entry was not an object",
-        full_body,
-    ))?;
+    let object = entry
+        .as_object()
+        .ok_or_else(|| protocol_drift("/models", "model entry was not an object", full_body))?;
     let id = object
         .get("id")
         .and_then(Value::as_str)
         .filter(|id| !id.is_empty())
-        .ok_or_else(|| protocol_drift(
-            "/models",
-            "model entry is missing non-empty string field `id`",
-            full_body,
-        ))?
+        .ok_or_else(|| {
+            protocol_drift(
+                "/models",
+                "model entry is missing non-empty string field `id`",
+                full_body,
+            )
+        })?
         .to_string();
 
     let mut routing_targets = BTreeSet::from([id.clone()]);
-    if let Some(alias) = object.get("alias").and_then(Value::as_str) {
-        if !alias.is_empty() {
-            routing_targets.insert(alias.to_string());
-        }
+    if let Some(alias) = object.get("alias").and_then(Value::as_str)
+        && !alias.is_empty()
+    {
+        routing_targets.insert(alias.to_string());
     }
     if let Some(aliases) = object.get("aliases").and_then(Value::as_array) {
-        for alias in aliases.iter().filter_map(Value::as_str).filter(|alias| !alias.is_empty()) {
+        for alias in aliases
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|alias| !alias.is_empty())
+        {
             routing_targets.insert(alias.to_string());
         }
     }
@@ -627,12 +617,12 @@ fn parse_model(entry: &Value, full_body: &str) -> Result<RouterModel, RouterDisc
     let input_modalities = architecture
         .and_then(|value| value.get("input_modalities"))
         .and_then(Value::as_array)
-        .map(string_array)
+        .map(|values| string_array(values))
         .unwrap_or_default();
     let output_modalities = architecture
         .and_then(|value| value.get("output_modalities"))
         .and_then(Value::as_array)
-        .map(string_array)
+        .map(|values| string_array(values))
         .unwrap_or_default();
 
     Ok(RouterModel {
@@ -655,12 +645,15 @@ fn parse_status(value: Option<&Value>) -> RouterModelStatus {
         Some(Value::String(phase)) => (Some(phase.as_str()), false, None, Vec::new(), None),
         Some(Value::Object(status)) => (
             status.get("value").and_then(Value::as_str),
-            status.get("failed").and_then(Value::as_bool).unwrap_or(false),
+            status
+                .get("failed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             status.get("exit_code").and_then(Value::as_i64),
             status
                 .get("args")
                 .and_then(Value::as_array)
-                .map(string_array)
+                .map(|values| string_array(values))
                 .unwrap_or_default(),
             status.get("progress").cloned(),
         ),
@@ -699,11 +692,11 @@ fn map_to_library(
     store: &ModelStore,
 ) -> Result<RouterLibraryLink, RouterDiscoveryError> {
     if let Some(path) = model.path.as_deref() {
-        let location = store
-            .model_location_by_path(path)
-            .map_err(|error| RouterDiscoveryError::LibraryLookup {
+        let location = store.model_location_by_path(path).map_err(|error| {
+            RouterDiscoveryError::LibraryLookup {
                 message: error.to_string(),
-            })?;
+            }
+        })?;
         if let Some(location) = location {
             return Ok(RouterLibraryLink {
                 kind: RouterLibraryLinkKind::ExactPath,
@@ -718,11 +711,11 @@ fn map_to_library(
     }
 
     if let Some(sha256) = model.sha256.as_deref() {
-        let ids = store
-            .model_ids_by_sha(sha256)
-            .map_err(|error| RouterDiscoveryError::LibraryLookup {
+        let ids = store.model_ids_by_sha(sha256).map_err(|error| {
+            RouterDiscoveryError::LibraryLookup {
                 message: error.to_string(),
-            })?;
+            }
+        })?;
         return match ids.as_slice() {
             [model_id] => Ok(RouterLibraryLink {
                 kind: RouterLibraryLinkKind::Sha256,
@@ -748,11 +741,7 @@ fn map_to_library(
     ))
 }
 
-fn protocol_drift(
-    path: &str,
-    message: impl Into<String>,
-    body: &str,
-) -> RouterDiscoveryError {
+fn protocol_drift(path: &str, message: impl Into<String>, body: &str) -> RouterDiscoveryError {
     RouterDiscoveryError::ProtocolDrift {
         path: path.into(),
         message: message.into(),
@@ -834,7 +823,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             model.routing_targets,
-            vec!["canonical".to_string(), "other".to_string(), "short".to_string()]
+            vec![
+                "canonical".to_string(),
+                "other".to_string(),
+                "short".to_string()
+            ]
         );
     }
 
@@ -882,11 +875,5 @@ mod tests {
         assert!(tracker.is_live());
         assert_eq!(tracker.current, Some(newer));
         assert!(tracker.disconnect.is_none());
-    }
-
-    #[test]
-    fn path_helper_accepts_windows_style_path_as_opaque_evidence() {
-        let path = Path::new(r"C:\models\model.gguf");
-        assert!(path.to_string_lossy().contains("model.gguf"));
     }
 }
