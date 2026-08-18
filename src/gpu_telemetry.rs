@@ -134,8 +134,7 @@ impl GpuTelemetryWorker {
         let worker_stop = Arc::clone(&stop);
         let handle = thread::spawn(move || {
             while !worker_stop.load(Ordering::Acquire) {
-                let snapshot = provider.sample();
-                if sender.send(snapshot).is_err() {
+                if sender.send(provider.sample()).is_err() {
                     break;
                 }
                 thread::park_timeout(cadence);
@@ -235,7 +234,7 @@ impl<B: GpuBackend> GpuTelemetryCollector<B> {
         for backend_adapter in backend_snapshot.adapters {
             let key = backend_adapter.identity.key();
             let previous = self.previous.get(&key);
-            seen.insert(key.clone());
+            seen.insert(key);
             adapters.push(convert_adapter(
                 backend_adapter,
                 previous,
@@ -524,8 +523,7 @@ fn now_unix_ms() -> u64 {
 mod platform {
     use std::{
         ffi::{CStr, c_char, c_void},
-        mem,
-        ptr,
+        mem, ptr,
     };
 
     use super::{
@@ -539,7 +537,6 @@ mod platform {
     const NVML_ERROR_DRIVER_NOT_LOADED: i32 = 9;
     const NVML_ERROR_LIBRARY_NOT_FOUND: i32 = 12;
     const NVML_ERROR_FUNCTION_NOT_FOUND: i32 = 13;
-    const NVML_ERROR_GPU_IS_LOST: i32 = 15;
     const NVML_ERROR_GPU_NOT_FOUND: i32 = 28;
     const NVML_CLOCK_GRAPHICS: u32 = 0;
     const NVML_CLOCK_MEM: u32 = 2;
@@ -627,7 +624,7 @@ mod platform {
     impl NvmlLibrary {
         fn load() -> Result<Self, BackendProviderError> {
             let wide_name: Vec<u16> = "nvml.dll".encode_utf16().chain(Some(0)).collect();
-            // SAFETY: `wide_name` is NUL-terminated and remains alive for the duration of the call.
+            // SAFETY: the string is NUL-terminated and alive for the duration of the call.
             let module = unsafe { LoadLibraryW(wide_name.as_ptr()) };
             if module.is_null() {
                 return Err(BackendProviderError::Unavailable(
@@ -653,8 +650,7 @@ mod platform {
                     b"nvmlDeviceGetUUID\0",
                 )?;
 
-                // SAFETY: the function pointer was resolved from the loaded NVML module with the
-                // documented nvmlInit_v2 signature.
+                // SAFETY: the symbol was resolved from nvml.dll with the documented signature.
                 let init_result = unsafe { init() };
                 if init_result != NVML_SUCCESS {
                     return Err(provider_error(
@@ -694,7 +690,7 @@ mod platform {
             })();
 
             if result.is_err() {
-                // SAFETY: `module` was returned by LoadLibraryW and no NvmlLibrary owns it yet.
+                // SAFETY: `module` is a live LoadLibraryW handle not yet owned by NvmlLibrary.
                 unsafe {
                     FreeLibrary(module);
                 }
@@ -704,7 +700,7 @@ mod platform {
 
         fn sample_adapters(&mut self) -> Result<BackendSnapshot, BackendProviderError> {
             let mut count = 0_u32;
-            // SAFETY: NVML is initialized and `count` is a valid writable u32.
+            // SAFETY: NVML is initialized and `count` is writable.
             let result = unsafe { (self.device_get_count_v2)(&mut count) };
             if result != NVML_SUCCESS {
                 return Err(provider_error(
@@ -716,8 +712,7 @@ mod platform {
             let mut adapters = Vec::with_capacity(count as usize);
             for index in 0..count {
                 let mut device = ptr::null_mut();
-                // SAFETY: `device` is a writable handle slot and `index` is within the count just
-                // returned by nvmlDeviceGetCount_v2.
+                // SAFETY: `index` is within the just-reported device count and `device` is writable.
                 let result = unsafe { (self.device_get_handle_by_index_v2)(index, &mut device) };
                 if result != NVML_SUCCESS {
                     return Err(provider_error(
@@ -735,11 +730,8 @@ mod platform {
         }
 
         fn sample_adapter(&self, index: u32, device: NvmlDevice) -> BackendAdapterSample {
-            let (uuid, uuid_note) = self.query_string(
-                self.device_get_uuid,
-                device,
-                "nvmlDeviceGetUUID",
-            );
+            let (uuid, uuid_note) =
+                self.query_string(self.device_get_uuid, device, "nvmlDeviceGetUUID");
             let (name, name_note) = match self.device_get_name {
                 Some(function) => self.query_string(function, device, "nvmlDeviceGetName"),
                 None => (
@@ -767,28 +759,27 @@ mod platform {
                 memory_utilization_percent,
                 memory_used_bytes,
                 memory_total_bytes,
-                temperature_celsius: self.query_u32_metric(
+                temperature_celsius: self.query_selected_u32_metric(
                     self.device_get_temperature,
                     device,
-                    Some(NVML_TEMPERATURE_GPU),
-                    "nvmlDeviceGetTemperature",
+                    NVML_TEMPERATURE_GPU,
+                    "nvmlDeviceGetTemperature(NVML_TEMPERATURE_GPU)",
                 ),
-                graphics_clock_mhz: self.query_u32_metric(
+                graphics_clock_mhz: self.query_selected_u32_metric(
                     self.device_get_clock_info,
                     device,
-                    Some(NVML_CLOCK_GRAPHICS),
+                    NVML_CLOCK_GRAPHICS,
                     "nvmlDeviceGetClockInfo(NVML_CLOCK_GRAPHICS)",
                 ),
-                memory_clock_mhz: self.query_u32_metric(
+                memory_clock_mhz: self.query_selected_u32_metric(
                     self.device_get_clock_info,
                     device,
-                    Some(NVML_CLOCK_MEM),
+                    NVML_CLOCK_MEM,
                     "nvmlDeviceGetClockInfo(NVML_CLOCK_MEM)",
                 ),
-                power_milliwatts: self.query_u32_metric(
+                power_milliwatts: self.query_simple_u32_metric(
                     self.device_get_power_usage,
                     device,
-                    None,
                     "nvmlDeviceGetPowerUsage",
                 ),
             }
@@ -801,8 +792,7 @@ mod platform {
             api: &str,
         ) -> (Option<String>, Option<String>) {
             let mut buffer = [0 as c_char; STRING_BUFFER_LEN];
-            // SAFETY: `buffer` is writable for STRING_BUFFER_LEN bytes and the function pointer has
-            // the documented NVML string-query signature.
+            // SAFETY: the buffer is writable and the symbol has the documented string signature.
             let result = unsafe {
                 function(
                     device,
@@ -816,8 +806,7 @@ mod platform {
                     Some(format!("{api} failed: {}", nvml_error_name(result))),
                 );
             }
-            // SAFETY: NVML guarantees a NUL-terminated string when the call succeeds and the buffer
-            // is initialized to zeros as an additional bound.
+            // SAFETY: successful NVML string queries are NUL-terminated; the buffer starts zeroed.
             let value = unsafe { CStr::from_ptr(buffer.as_ptr()) }
                 .to_string_lossy()
                 .trim()
@@ -846,7 +835,7 @@ mod platform {
                 );
             };
             let mut utilization = NvmlUtilization::default();
-            // SAFETY: `utilization` is a writable repr(C) structure of the documented NVML shape.
+            // SAFETY: `utilization` is a writable repr(C) structure of the documented shape.
             let result = unsafe { function(device, &mut utilization) };
             (
                 metric_result(
@@ -872,7 +861,7 @@ mod platform {
                 );
             };
             let mut memory = NvmlMemory::default();
-            // SAFETY: `memory` is a writable repr(C) structure of the documented NVML shape.
+            // SAFETY: `memory` is a writable repr(C) structure of the documented shape.
             let result = unsafe { function(device, &mut memory) };
             (
                 metric_result(result, memory.used, "nvmlDeviceGetMemoryInfo(used)"),
@@ -880,11 +869,11 @@ mod platform {
             )
         }
 
-        fn query_u32_metric(
+        fn query_selected_u32_metric(
             &self,
-            function: Option<unsafe extern "C" fn(NvmlDevice, *mut u32) -> NvmlReturn>,
+            function: Option<unsafe extern "C" fn(NvmlDevice, u32, *mut u32) -> NvmlReturn>,
             device: NvmlDevice,
-            _selector: Option<u32>,
+            selector: u32,
             api: &str,
         ) -> BackendMetric<u32> {
             let Some(function) = function else {
@@ -893,8 +882,24 @@ mod platform {
                 ));
             };
             let mut value = 0_u32;
-            // SAFETY: `value` is a writable u32 and the function pointer has the documented
-            // two-argument NVML query signature.
+            // SAFETY: `value` is writable and the selector matches the documented NVML enum.
+            let result = unsafe { function(device, selector, &mut value) };
+            metric_result(result, value, api)
+        }
+
+        fn query_simple_u32_metric(
+            &self,
+            function: Option<unsafe extern "C" fn(NvmlDevice, *mut u32) -> NvmlReturn>,
+            device: NvmlDevice,
+            api: &str,
+        ) -> BackendMetric<u32> {
+            let Some(function) = function else {
+                return BackendMetric::Unavailable(format!(
+                    "{api} is not exported by the loaded NVML library"
+                ));
+            };
+            let mut value = 0_u32;
+            // SAFETY: `value` is writable and the symbol has the documented two-argument shape.
             let result = unsafe { function(device, &mut value) };
             metric_result(result, value, api)
         }
@@ -902,7 +907,7 @@ mod platform {
 
     impl Drop for NvmlLibrary {
         fn drop(&mut self) {
-            // SAFETY: NVML was successfully initialized exactly once for this library instance.
+            // SAFETY: this instance owns one successful NVML initialization and one module handle.
             unsafe {
                 (self.shutdown)();
                 FreeLibrary(self.module as *mut c_void);
@@ -997,15 +1002,14 @@ mod platform {
     }
 
     fn optional_symbol<T: Copy>(module: usize, name: &[u8]) -> Option<T> {
-        // SAFETY: `module` is a live LoadLibraryW handle and `name` is NUL-terminated. The caller
-        // supplies the documented function-pointer type for each resolved NVML symbol.
+        // SAFETY: `module` is live, `name` is NUL-terminated, and each caller supplies the exact
+        // documented function-pointer type for the symbol it requests.
         let address = unsafe { GetProcAddress(module as *mut c_void, name.as_ptr()) };
         if address.is_null() {
             None
         } else {
             debug_assert_eq!(mem::size_of::<T>(), mem::size_of::<*mut c_void>());
-            // SAFETY: every call site pairs an exact NVML export name with its documented function
-            // pointer signature. Function pointers and FARPROC are pointer-sized on Windows.
+            // SAFETY: NVML function pointers and FARPROC are pointer-sized on Windows.
             Some(unsafe { mem::transmute_copy(&address) })
         }
     }
@@ -1079,7 +1083,9 @@ mod tests {
         }
     }
 
-    fn snapshot(adapters: Vec<BackendAdapterSample>) -> Result<BackendSnapshot, BackendProviderError> {
+    fn snapshot(
+        adapters: Vec<BackendAdapterSample>,
+    ) -> Result<BackendSnapshot, BackendProviderError> {
         Ok(BackendSnapshot {
             reported_adapter_count: adapters.len() as u32,
             adapters,
@@ -1089,7 +1095,8 @@ mod tests {
     #[test]
     fn supports_multiple_uuid_identified_adapters_and_truthful_unavailable_metrics() {
         let mut second = adapter(1, "GPU-b", BackendMetric::Live(80));
-        second.power_milliwatts = BackendMetric::Unavailable("power reporting unsupported".to_owned());
+        second.power_milliwatts =
+            BackendMetric::Unavailable("power reporting unsupported".to_owned());
         let backend = FakeBackend::new(vec![snapshot(vec![
             adapter(0, "GPU-a", BackendMetric::Live(25)),
             second,
@@ -1102,8 +1109,16 @@ mod tests {
             TelemetryState::Live { value: 2 }
         );
         assert_eq!(result.adapters.len(), 2);
-        assert!(result.adapters.iter().all(|adapter| adapter.identity.stable_for_evidence));
-        assert_eq!(result.adapters[0].gpu_utilization_percent.live_value(), Some(&25));
+        assert!(
+            result
+                .adapters
+                .iter()
+                .all(|adapter| adapter.identity.stable_for_evidence)
+        );
+        assert_eq!(
+            result.adapters[0].gpu_utilization_percent.live_value(),
+            Some(&25)
+        );
         assert!(matches!(
             result.adapters[1].power_milliwatts.state,
             TelemetryState::Unavailable { .. }
