@@ -98,10 +98,7 @@ pub enum ServerCommandError {
     UnsupportedOption { option: String },
 
     #[error("invalid launch setting {field}: {reason}")]
-    InvalidValue {
-        field: &'static str,
-        reason: String,
-    },
+    InvalidValue { field: &'static str, reason: String },
 }
 
 pub fn build_server_launch_spec(
@@ -273,7 +270,7 @@ pub fn build_server_launch_spec(
     let mut environment = BTreeMap::new();
     let mut sensitive_environment_keys = BTreeSet::new();
     for (key, value) in &settings.environment {
-        if key.is_empty() {
+        if key.as_os_str().is_empty() {
             return Err(ServerCommandError::InvalidValue {
                 field: "environment",
                 reason: "environment variable name cannot be empty".into(),
@@ -430,6 +427,8 @@ mod tests {
         let selected = installation(
             "--model FILE --mmproj FILE --config FILE --host HOST --port N --threads N --ctx-size N --n-gpu-layers N --batch-size N --ubatch-size N",
         );
+        let expected_executable = selected.server.as_ref().unwrap().path.clone();
+        let expected_cwd = selected.root_path.clone();
         let settings = ServerLaunchSettings {
             model: PathBuf::from(r"D:\Models 外部\my model.gguf"),
             mmproj: Some(PathBuf::from(r"D:\Models 外部\视觉 projector.gguf")),
@@ -443,13 +442,16 @@ mod tests {
             ubatch_size: Some(128),
             ..Default::default()
         };
+        let model_arg = settings.model.as_os_str().to_os_string();
+        let mmproj_arg = settings.mmproj.as_ref().unwrap().as_os_str().to_os_string();
+        let config_arg = settings.config.as_ref().unwrap().as_os_str().to_os_string();
 
         let spec = build_server_launch_spec(&selected, &settings).unwrap();
-        assert_eq!(spec.executable, selected.server.unwrap().path);
-        assert_eq!(spec.cwd, selected.root_path);
-        assert!(spec.argv.contains(&settings.model.into_os_string()));
-        assert!(spec.argv.contains(&settings.mmproj.unwrap().into_os_string()));
-        assert!(spec.argv.contains(&settings.config.unwrap().into_os_string()));
+        assert_eq!(spec.executable, expected_executable);
+        assert_eq!(spec.cwd, expected_cwd);
+        assert!(spec.argv.contains(&model_arg));
+        assert!(spec.argv.contains(&mmproj_arg));
+        assert!(spec.argv.contains(&config_arg));
         assert!(spec.diagnostic_command().contains("my model.gguf"));
         assert!(spec.diagnostic_command().contains("视觉 projector.gguf"));
     }
@@ -505,8 +507,14 @@ mod tests {
     fn diagnostics_redact_secret_argument_and_environment_without_mutating_execution_data() {
         let selected = installation("--model FILE --api-key KEY");
         let mut environment = BTreeMap::new();
-        environment.insert("PUBLIC_SETTING".into(), ServerEnvironmentValue::plain("visible"));
-        environment.insert("PRIVATE_TOKEN".into(), ServerEnvironmentValue::secret("secret-env"));
+        environment.insert(
+            "PUBLIC_SETTING".into(),
+            ServerEnvironmentValue::plain("visible"),
+        );
+        environment.insert(
+            "PRIVATE_TOKEN".into(),
+            ServerEnvironmentValue::secret("secret-env"),
+        );
         let settings = ServerLaunchSettings {
             model: PathBuf::from("model.gguf"),
             api_key: Some("super-secret".into()),
@@ -515,8 +523,15 @@ mod tests {
         };
 
         let spec = build_server_launch_spec(&selected, &settings).unwrap();
-        assert!(spec.argv.iter().any(|item| item == "super-secret"));
-        assert_eq!(spec.environment.get(OsStr::new("PRIVATE_TOKEN")).unwrap(), "secret-env");
+        assert!(
+            spec.argv
+                .iter()
+                .any(|item| item.as_os_str() == OsStr::new("super-secret"))
+        );
+        assert_eq!(
+            spec.environment.get(OsStr::new("PRIVATE_TOKEN")).unwrap(),
+            "secret-env"
+        );
 
         let diagnostic = spec.diagnostic_command();
         assert!(!diagnostic.contains("super-secret"));
