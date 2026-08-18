@@ -3,9 +3,7 @@
 use std::{env, fs, path::PathBuf};
 
 use llamamanager::{
-    benchmark::{
-        BenchmarkCancellation, run_default_benchmark, run_default_benchmark_cancellable,
-    },
+    benchmark::{BenchmarkCancellation, run_default_benchmark, run_default_benchmark_cancellable},
     error::LlamaManagerError,
     gguf::inspect_gguf,
     llama::inspect_installation,
@@ -98,10 +96,7 @@ fn validates_real_windows_runtime_end_to_end() {
     assert!(!model.metadata.is_empty());
 
     let model_v2 = inspect_gguf(&model_v2_path).unwrap();
-    assert_eq!(
-        model_v2.sha256.to_ascii_lowercase(),
-        expected_model_v2_sha
-    );
+    assert_eq!(model_v2.sha256.to_ascii_lowercase(), expected_model_v2_sha);
     assert_eq!(model_v2.gguf_version, 2);
     assert!(model_v2.tensor_count > 0);
     assert!(model_v2.metadata_count > 0);
