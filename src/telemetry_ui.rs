@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
@@ -11,8 +11,7 @@ use dioxus::prelude::*;
 
 use crate::{
     gpu_telemetry::{
-        GpuAdapterTelemetry, GpuTelemetryProvider, GpuTelemetrySnapshot,
-        NvidiaGpuTelemetryProvider,
+        GpuAdapterTelemetry, GpuTelemetryProvider, GpuTelemetrySnapshot, NvidiaGpuTelemetryProvider,
     },
     hardware_telemetry::{
         HardwareTelemetryProvider, HardwareTelemetrySnapshot, TelemetryReading, TelemetryState,
@@ -35,9 +34,14 @@ struct TelemetryUiState {
 
 type TelemetryStateSignal = Signal<TelemetryUiState, SyncStorage>;
 
+#[derive(Clone)]
 struct TelemetryUiWorker {
+    _inner: Arc<TelemetryUiWorkerInner>,
+}
+
+struct TelemetryUiWorkerInner {
     stop: Arc<AtomicBool>,
-    handle: Option<JoinHandle<()>>,
+    handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl TelemetryUiWorker {
@@ -61,17 +65,22 @@ impl TelemetryUiWorker {
                 thread::park_timeout(TELEMETRY_CADENCE);
             }
         });
+
         Self {
-            stop,
-            handle: Some(handle),
+            _inner: Arc::new(TelemetryUiWorkerInner {
+                stop,
+                handle: Mutex::new(Some(handle)),
+            }),
         }
     }
 }
 
-impl Drop for TelemetryUiWorker {
+impl Drop for TelemetryUiWorkerInner {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        if let Some(handle) = self.handle.take() {
+        if let Ok(handle) = self.handle.get_mut()
+            && let Some(handle) = handle.take()
+        {
             handle.thread().unpark();
             let _ = handle.join();
         }
@@ -211,17 +220,16 @@ pub fn TelemetryView() -> Element {
 
     let hardware = snapshot.hardware.as_ref();
     let cpu = hardware.map(|item| {
-        present_reading(&item.cpu.total_usage_percent, |value| format!("{value:.1}%"))
+        present_reading(&item.cpu.total_usage_percent, |value| {
+            format!("{value:.1}%")
+        })
     });
-    let ram_used = hardware.map(|item| {
-        present_reading(&item.memory.used_physical_bytes, |value| bytes(*value))
-    });
-    let ram_available = hardware.map(|item| {
-        present_reading(&item.memory.available_physical_bytes, |value| bytes(*value))
-    });
-    let logical = hardware.map(|item| {
-        present_reading(&item.cpu.logical_processor_count, |value| value.to_string())
-    });
+    let ram_used = hardware
+        .map(|item| present_reading(&item.memory.used_physical_bytes, |value| bytes(*value)));
+    let ram_available = hardware
+        .map(|item| present_reading(&item.memory.available_physical_bytes, |value| bytes(*value)));
+    let logical = hardware
+        .map(|item| present_reading(&item.cpu.logical_processor_count, |value| value.to_string()));
 
     rsx! {
         style { dangerous_inner_html: TELEMETRY_UI_CSS }
