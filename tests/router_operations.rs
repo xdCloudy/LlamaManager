@@ -192,13 +192,22 @@ fn props() -> serde_json::Value {
 fn load_checks_compatibility_then_reconciles_loaded_state() {
     let temp = tempdir().unwrap();
     let path = temp.path().join("target.gguf");
-    let store = store_with_models(&[(&"library-target", path.as_path(), &"a".repeat(64))]);
+    let sha = "a".repeat(64);
+    let store = store_with_models(&[("library-target", path.as_path(), sha.as_str())]);
     let (port, server) = scripted_router(vec![
         response("GET", "/props", props()),
-        response("GET", "/models", registry(vec![router_model("target", &path, "unloaded")])),
+        response(
+            "GET",
+            "/models",
+            registry(vec![router_model("target", &path, "unloaded")]),
+        ),
         response("POST", "/models/load", json!({"success": true})),
         response("GET", "/props", props()),
-        response("GET", "/models", registry(vec![router_model("target", &path, "loaded")])),
+        response(
+            "GET",
+            "/models",
+            registry(vec![router_model("target", &path, "loaded")]),
+        ),
     ]);
 
     let controller = RouterOperationController::new();
@@ -229,10 +238,18 @@ fn unload_reconciles_actual_unloaded_state() {
     let path = temp.path().join("target.gguf");
     let (port, server) = scripted_router(vec![
         response("GET", "/props", props()),
-        response("GET", "/models", registry(vec![router_model("target", &path, "loaded")])),
+        response(
+            "GET",
+            "/models",
+            registry(vec![router_model("target", &path, "loaded")]),
+        ),
         response("POST", "/models/unload", json!({"success": true})),
         response("GET", "/props", props()),
-        response("GET", "/models", registry(vec![router_model("target", &path, "unloaded")])),
+        response(
+            "GET",
+            "/models",
+            registry(vec![router_model("target", &path, "unloaded")]),
+        ),
     ]);
 
     let controller = RouterOperationController::new();
@@ -283,9 +300,11 @@ fn switch_confirms_target_before_unloading_any_remaining_source() {
     let temp = tempdir().unwrap();
     let source = temp.path().join("source.gguf");
     let target = temp.path().join("target.gguf");
+    let sha_a = "a".repeat(64);
+    let sha_b = "b".repeat(64);
     let store = store_with_models(&[
-        (&"library-source", source.as_path(), &"a".repeat(64)),
-        (&"library-target", target.as_path(), &"b".repeat(64)),
+        ("library-source", source.as_path(), sha_a.as_str()),
+        ("library-target", target.as_path(), sha_b.as_str()),
     ]);
     let (port, server) = scripted_router(vec![
         response("GET", "/props", props()),
@@ -342,9 +361,11 @@ fn failed_target_load_is_explicit_and_registry_evidence_is_retained() {
     let temp = tempdir().unwrap();
     let source = temp.path().join("source.gguf");
     let target = temp.path().join("target.gguf");
+    let sha_a = "a".repeat(64);
+    let sha_b = "b".repeat(64);
     let store = store_with_models(&[
-        (&"library-source", source.as_path(), &"a".repeat(64)),
-        (&"library-target", target.as_path(), &"b".repeat(64)),
+        ("library-source", source.as_path(), sha_a.as_str()),
+        ("library-target", target.as_path(), sha_b.as_str()),
     ]);
     let failed_target = json!({
         "id": "target",
@@ -370,7 +391,10 @@ fn failed_target_load_is_explicit_and_registry_evidence_is_retained() {
         response(
             "GET",
             "/models",
-            registry(vec![router_model("source", &source, "loaded"), failed_target]),
+            registry(vec![
+                router_model("source", &source, "loaded"),
+                failed_target,
+            ]),
         ),
     ]);
 
@@ -388,10 +412,15 @@ fn failed_target_load_is_explicit_and_registry_evidence_is_retained() {
         .unwrap_err();
     server.join().unwrap();
 
-    assert!(matches!(error, RouterOperationError::Reconciliation { .. }));
+    assert!(matches!(
+        error,
+        RouterOperationError::Reconciliation { .. }
+    ));
     match controller.state() {
         RouterOperationState::Failed(failure) => {
-            let registry = failure.last_registry.expect("failed operation keeps registry evidence");
+            let registry = failure
+                .last_registry
+                .expect("failed operation keeps registry evidence");
             assert_eq!(
                 registry
                     .models
@@ -431,7 +460,11 @@ fn unknown_compatibility_blocks_load_before_post() {
 
     let (port, server) = scripted_router(vec![
         response("GET", "/props", props()),
-        response("GET", "/models", registry(vec![router_model("unknown", &path, "unloaded")])),
+        response(
+            "GET",
+            "/models",
+            registry(vec![router_model("unknown", &path, "unloaded")]),
+        ),
     ]);
     let controller = RouterOperationController::new();
     let error = controller
