@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   rustfmt:
+    # Temporary branch-only formatter; removed after it commits canonical rustfmt output.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
