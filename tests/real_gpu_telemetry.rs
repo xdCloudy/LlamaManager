@@ -97,7 +97,10 @@ fn validates_real_nvidia_gpu_telemetry() {
     }
 
     let live_metric_count = [
-        stable_adapter.gpu_utilization_percent.live_value().is_some(),
+        stable_adapter
+            .gpu_utilization_percent
+            .live_value()
+            .is_some(),
         stable_adapter
             .memory_utilization_percent
             .live_value()
