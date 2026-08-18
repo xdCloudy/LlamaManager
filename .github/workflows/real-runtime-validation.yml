@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/real-runtime-validation.yml"
       - "tests/real_runtime_validation.rs"
+      - "tests/real_hardware_telemetry.rs"
       - "tests/real_server_readiness.rs"
       - "tests/real_router_discovery.rs"
       - "tests/real_router_operations.rs"
@@ -12,6 +13,7 @@ on:
       - "tests/real_router_management.rs"
       - "src/benchmark.rs"
       - "src/gguf.rs"
+      - "src/hardware_telemetry.rs"
       - "src/llama.rs"
       - "src/persistence.rs"
       - "src/router.rs"
@@ -29,7 +31,7 @@ permissions:
 
 jobs:
   real-runtime:
-    name: Real llama.cpp + GGUF + benchmark + server + router + switch benchmark
+    name: Real Windows hardware + llama.cpp + GGUF + benchmark + server + router
     runs-on: windows-2025
     timeout-minutes: 30
     env:
@@ -132,6 +134,68 @@ jobs:
           cargo clippy --all-targets --all-features -- -D warnings
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run real Windows hardware telemetry validation
+        shell: pwsh
+        run: cargo test --test real_hardware_telemetry -- --ignored --nocapture
+
+      - name: Cross-check hardware telemetry against independent Windows system view
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $telemetryPath = Join-Path $env:LLAMAMANAGER_REAL_EVIDENCE_DIR 'hardware-telemetry.json'
+          if (-not (Test-Path -LiteralPath $telemetryPath)) {
+            throw "hardware telemetry evidence was not produced: $telemetryPath"
+          }
+
+          $telemetry = Get-Content -LiteralPath $telemetryPath -Raw | ConvertFrom-Json -Depth 20
+          if ($telemetry.cpu.logical_processor_count.state -ne 'live' -or
+              $telemetry.cpu.physical_core_count.state -ne 'live' -or
+              $telemetry.memory.total_physical_bytes.state -ne 'live') {
+            throw 'hardware telemetry did not expose live topology and total-memory evidence'
+          }
+
+          $processors = @(Get-CimInstance -ClassName Win32_Processor)
+          $os = Get-CimInstance -ClassName Win32_OperatingSystem
+          $cimLogical = [uint64](($processors | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
+          $cimPhysical = [uint64](($processors | Measure-Object -Property NumberOfCores -Sum).Sum)
+          $cimTotalBytes = [uint64]$os.TotalVisibleMemorySize * 1KB
+          $providerLogical = [uint64]$telemetry.cpu.logical_processor_count.value
+          $providerPhysical = [uint64]$telemetry.cpu.physical_core_count.value
+          $providerTotalBytes = [uint64]$telemetry.memory.total_physical_bytes.value
+
+          if ($providerLogical -ne $cimLogical) {
+            throw "logical processor mismatch: provider=$providerLogical CIM=$cimLogical"
+          }
+          if ($providerPhysical -ne $cimPhysical) {
+            throw "physical core mismatch: provider=$providerPhysical CIM=$cimPhysical"
+          }
+
+          $totalDelta = if ($providerTotalBytes -ge $cimTotalBytes) {
+            $providerTotalBytes - $cimTotalBytes
+          } else {
+            $cimTotalBytes - $providerTotalBytes
+          }
+          $totalTolerance = [uint64][Math]::Max(256MB, [double]$providerTotalBytes * 0.05)
+          if ($totalDelta -gt $totalTolerance) {
+            throw "total physical memory mismatch exceeds tolerance: provider=$providerTotalBytes CIM=$cimTotalBytes delta=$totalDelta tolerance=$totalTolerance"
+          }
+
+          [ordered]@{
+            provider = [ordered]@{
+              logical_processors = $providerLogical
+              physical_cores = $providerPhysical
+              total_physical_bytes = $providerTotalBytes
+            }
+            independent_cim = [ordered]@{
+              logical_processors = $cimLogical
+              physical_cores = $cimPhysical
+              total_visible_memory_bytes = $cimTotalBytes
+              free_physical_memory_bytes = [uint64]$os.FreePhysicalMemory * 1KB
+            }
+            total_memory_delta_bytes = $totalDelta
+            total_memory_tolerance_bytes = $totalTolerance
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $env:LLAMAMANAGER_REAL_EVIDENCE_DIR 'hardware-telemetry-independent.json') -Encoding utf8
+
       - name: Run real Windows runtime validation
         shell: pwsh
         run: cargo test --test real_runtime_validation -- --ignored --nocapture
@@ -160,6 +224,10 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          $hardware = 'artifacts\real-runtime\hardware-telemetry.json'
+          if (Test-Path $hardware) { Get-Content $hardware }
+          $hardwareIndependent = 'artifacts\real-runtime\hardware-telemetry-independent.json'
+          if (Test-Path $hardwareIndependent) { Get-Content $hardwareIndependent }
           $summary = 'artifacts\real-runtime\summary.json'
           if (Test-Path $summary) { Get-Content $summary }
           $readiness = 'artifacts\real-runtime\server-readiness-inference.json'
