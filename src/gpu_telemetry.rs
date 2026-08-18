@@ -573,11 +573,7 @@ mod platform {
 
     impl GpuBackend for NvmlBackend {
         fn sample_adapters(&mut self) -> Result<BackendSnapshot, BackendProviderError> {
-            let result = self.library()?.sample_adapters();
-            if result.is_err() {
-                self.library = None;
-            }
-            result
+            self.library()?.sample_adapters()
         }
     }
 
@@ -662,6 +658,7 @@ mod platform {
             })();
 
             if result.is_err() {
+                // SAFETY: `module` is a live LoadLibraryW handle not yet owned by NvmlLibrary.
                 unsafe {
                     FreeLibrary(module);
                 }
@@ -671,6 +668,7 @@ mod platform {
 
         fn sample_adapters(&mut self) -> Result<BackendSnapshot, BackendProviderError> {
             let mut count = 0_u32;
+            // SAFETY: NVML is initialized and `count` is writable.
             let result = unsafe { (self.device_get_count_v2)(&mut count) };
             if result != NVML_SUCCESS {
                 return Err(provider_error(
@@ -682,6 +680,7 @@ mod platform {
             let mut adapters = Vec::with_capacity(count as usize);
             for index in 0..count {
                 let mut device = ptr::null_mut();
+                // SAFETY: `index` is within the just-reported device count and `device` is writable.
                 let result = unsafe { (self.device_get_handle_by_index_v2)(index, &mut device) };
                 if result != NVML_SUCCESS {
                     return Err(provider_error(
@@ -699,7 +698,8 @@ mod platform {
         }
 
         fn sample_adapter(&self, index: u32, device: NvmlDevice) -> BackendAdapterSample {
-            let (uuid, uuid_note) = self.query_string(self.device_get_uuid, device, "nvmlDeviceGetUUID");
+            let (uuid, uuid_note) =
+                self.query_string(self.device_get_uuid, device, "nvmlDeviceGetUUID");
             let (name, name_note) = match self.device_get_name {
                 Some(function) => self.query_string(function, device, "nvmlDeviceGetName"),
                 None => (
@@ -710,7 +710,8 @@ mod platform {
             let stable_for_evidence = uuid.is_some();
             let identity_note = join_notes(uuid_note, name_note);
 
-            let (gpu_utilization_percent, memory_utilization_percent) = self.query_utilization(device);
+            let (gpu_utilization_percent, memory_utilization_percent) =
+                self.query_utilization(device);
             let (memory_used_bytes, memory_total_bytes) = self.query_memory(device);
 
             BackendAdapterSample {
@@ -759,6 +760,7 @@ mod platform {
             api: &str,
         ) -> (Option<String>, Option<String>) {
             let mut buffer = [0 as c_char; STRING_BUFFER_LEN];
+            // SAFETY: the buffer is writable and the symbol has the documented string signature.
             let result = unsafe {
                 function(
                     device,
@@ -772,6 +774,7 @@ mod platform {
                     Some(format!("{api} failed: {}", nvml_error_name(result))),
                 );
             }
+            // SAFETY: successful NVML string queries are NUL-terminated; the buffer starts zeroed.
             let value = unsafe { CStr::from_ptr(buffer.as_ptr()) }
                 .to_string_lossy()
                 .trim()
@@ -800,6 +803,7 @@ mod platform {
                 );
             };
             let mut utilization = NvmlUtilization::default();
+            // SAFETY: `utilization` is a writable repr(C) structure of the documented shape.
             let result = unsafe { function(device, &mut utilization) };
             (
                 metric_result(
@@ -825,6 +829,7 @@ mod platform {
                 );
             };
             let mut memory = NvmlMemory::default();
+            // SAFETY: `memory` is a writable repr(C) structure of the documented shape.
             let result = unsafe { function(device, &mut memory) };
             (
                 metric_result(result, memory.used, "nvmlDeviceGetMemoryInfo(used)"),
@@ -845,6 +850,7 @@ mod platform {
                 ));
             };
             let mut value = 0_u32;
+            // SAFETY: `value` is writable and the selector matches the documented NVML enum.
             let result = unsafe { function(device, selector, &mut value) };
             metric_result(result, value, api)
         }
@@ -861,6 +867,7 @@ mod platform {
                 ));
             };
             let mut value = 0_u32;
+            // SAFETY: `value` is writable and the symbol has the documented two-argument shape.
             let result = unsafe { function(device, &mut value) };
             metric_result(result, value, api)
         }
@@ -868,6 +875,7 @@ mod platform {
 
     impl Drop for NvmlLibrary {
         fn drop(&mut self) {
+            // SAFETY: this instance owns one successful NVML initialization and one module handle.
             unsafe {
                 (self.shutdown)();
                 FreeLibrary(self.module as *mut c_void);
@@ -959,11 +967,14 @@ mod platform {
     }
 
     fn optional_symbol<T: Copy>(module: usize, name: &[u8]) -> Option<T> {
+        // SAFETY: `module` is live, `name` is NUL-terminated, and each caller supplies the exact
+        // documented function-pointer type for the symbol it requests.
         let address = unsafe { GetProcAddress(module as *mut c_void, name.as_ptr()) };
         if address.is_null() {
             None
         } else {
             debug_assert_eq!(mem::size_of::<T>(), mem::size_of::<*mut c_void>());
+            // SAFETY: NVML function pointers and FARPROC are pointer-sized on Windows.
             Some(unsafe { mem::transmute_copy(&address) })
         }
     }
