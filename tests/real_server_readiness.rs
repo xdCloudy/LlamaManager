@@ -1,12 +1,6 @@
 #![cfg(windows)]
 
-use std::{
-    env, fs,
-    net::TcpListener,
-    path::PathBuf,
-    sync::atomic::AtomicBool,
-    time::Duration,
-};
+use std::{env, fs, net::TcpListener, path::PathBuf, sync::atomic::AtomicBool, time::Duration};
 
 use llamamanager::{
     llama::inspect_installation,
@@ -35,7 +29,8 @@ fn validates_real_llama_server_readiness_and_inference() {
     let evidence_dir = PathBuf::from(required_env("LLAMAMANAGER_REAL_EVIDENCE_DIR"));
     fs::create_dir_all(&evidence_dir).unwrap();
 
-    let installation = inspect_installation(&llama_root).expect("inspect pinned llama.cpp installation");
+    let installation =
+        inspect_installation(&llama_root).expect("inspect pinned llama.cpp installation");
     let port = free_loopback_port();
     let endpoint = ServerEndpoint::loopback(port);
     require_port_available(&endpoint).expect("selected ephemeral port must still be available");
@@ -64,7 +59,9 @@ fn validates_real_llama_server_readiness_and_inference() {
     let cancellation = AtomicBool::new(false);
 
     let readiness = {
-        let process = supervisor.process_mut().expect("managed server process exists");
+        let process = supervisor
+            .process_mut()
+            .expect("managed server process exists");
         wait_for_server_ready(process, &endpoint, &policy, &cancellation)
             .expect("real llama-server must become ready and answer minimal inference")
     };
