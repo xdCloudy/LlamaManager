@@ -135,7 +135,7 @@ fn model_info(id: &str, path: &Path, sha256: &str) -> ModelInfo {
         general_type: None,
         file_type: Some(2),
         parameter_count: Some(1_000_000),
-        tensor_type_counts: BTreeMap::from([("Q4_0".into(), 1)]),
+        tensor_type_counts: BTreeMap::from([(2_u32, 1)]),
         metadata: BTreeMap::new(),
         inspected_at_unix_ms: 1,
     }
