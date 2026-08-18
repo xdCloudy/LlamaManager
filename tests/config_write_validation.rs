@@ -1,4 +1,7 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use llamamanager::{
     config_write::{
@@ -37,12 +40,8 @@ fn managed_path_is_deterministic_relocatable_and_writable() {
     let target = managed_models_ini_path(&paths);
     assert_eq!(target, paths.config.join("models.ini"));
 
-    let receipt = write_managed_models_ini(
-        &paths,
-        "[*]\r\nthreads=8\r\n",
-        &valid_report(),
-    )
-    .unwrap();
+    let receipt =
+        write_managed_models_ini(&paths, "[*]\r\nthreads=8\r\n", &valid_report()).unwrap();
     assert_eq!(receipt.mode, ConfigWriteMode::Managed);
     assert_eq!(receipt.target, target);
     assert_eq!(fs::read(&target).unwrap(), b"[*]\r\nthreads=8\r\n");
@@ -55,13 +54,8 @@ fn validation_error_blocks_before_external_mutation() {
     let original = b"[*]\r\nthreads=8\r\n";
     fs::write(&target, original).unwrap();
 
-    let error = write_external_models_ini(
-        &target,
-        "[*]\nthreads=0\n",
-        &invalid_report(),
-        3,
-    )
-    .unwrap_err();
+    let error =
+        write_external_models_ini(&target, "[*]\nthreads=0\n", &invalid_report(), 3).unwrap_err();
 
     assert!(matches!(
         error,
@@ -97,13 +91,8 @@ fn restore_recovers_known_good_bytes_and_preserves_bad_pre_restore_state() {
     let original = "[*]\nthreads=8\n";
     fs::write(&target, original).unwrap();
 
-    let written = write_external_models_ini(
-        &target,
-        "[*]\nthreads=12\n",
-        &valid_report(),
-        5,
-    )
-    .unwrap();
+    let written =
+        write_external_models_ini(&target, "[*]\nthreads=12\n", &valid_report(), 5).unwrap();
     let original_backup = written.backup.unwrap();
 
     fs::write(&target, "this is a deliberately bad edit\n").unwrap();
@@ -137,13 +126,7 @@ fn backup_retention_is_target_scoped_bounded_and_never_zero() {
     assert_eq!(list_backups(&target).len(), 2);
     assert_eq!(fs::read_to_string(&unrelated).unwrap(), "do not touch");
 
-    write_external_models_ini(
-        &target,
-        "[*]\nthreads=9\n",
-        &valid_report(),
-        0,
-    )
-    .unwrap();
+    write_external_models_ini(&target, "[*]\nthreads=9\n", &valid_report(), 0).unwrap();
     assert_eq!(list_backups(&target).len(), 1);
 }
 
@@ -175,13 +158,8 @@ fn windows_exclusive_lock_is_actionable_and_non_destructive() {
         .share_mode(0)
         .open(&target)
         .unwrap();
-    let error = write_external_models_ini(
-        &target,
-        "[*]\r\nthreads=12\r\n",
-        &valid_report(),
-        5,
-    )
-    .unwrap_err();
+    let error = write_external_models_ini(&target, "[*]\r\nthreads=12\r\n", &valid_report(), 5)
+        .unwrap_err();
     drop(lock);
 
     assert!(matches!(error, ConfigWriteError::Io { .. }));
@@ -200,12 +178,7 @@ fn windows_read_only_target_is_an_actionable_failure() {
     permissions.set_readonly(true);
     fs::set_permissions(&target, permissions).unwrap();
 
-    let result = write_external_models_ini(
-        &target,
-        "[*]\r\nthreads=12\r\n",
-        &valid_report(),
-        5,
-    );
+    let result = write_external_models_ini(&target, "[*]\r\nthreads=12\r\n", &valid_report(), 5);
 
     let mut permissions = fs::metadata(&target).unwrap().permissions();
     permissions.set_readonly(false);
