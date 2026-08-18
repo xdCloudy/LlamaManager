@@ -2,6 +2,38 @@
 
 ## Current tranche
 
+Milestone 5 is **C5 — Complete** with evidence-backed real llama.cpp router discovery, model switching, restart reconciliation, and a verified Windows Router Control surface:
+
+```text
+discover selected llama.cpp router + capabilities
+→ reconcile the live canonical model registry
+→ expose truthful loaded/resident/active/alias/unknown state
+→ load / unload / preload / switch only when live capability evidence permits
+→ serialize router mutations, runtime refresh and live reconciliation
+→ retain exact running/success/failure/cancel evidence
+→ benchmark A → B → A with reproducible runtime/model envelopes
+→ reconcile after restart instead of carrying forward stale readiness
+→ recover from failed operations and unexpected worker panic
+→ render visible capability reasons and truthful stale/unreconciled state
+→ verify normal and narrow Windows desktop layouts
+```
+
+Final M5 implementation: PR #134, squash merge `7626ca44d16f2b3b2b51e575fc2f09db19099b65`; validated implementation head `a79e6445c0d520a7f6517555860f1b13f73ae31a`.
+
+Normal CI #255 (`32143778017`) passed the complete Windows quality pipeline. Real Windows Runtime Validation #43 (`32143777993`) passed against pinned llama.cpp b10472 and published GGUFs, including real router discovery, load/unload/preload/switch, A → B → A switching, and restart/reconnect reconciliation.
+
+The repository owner built the exact final PR head from source and completed the remaining rendered Windows visual gate at normal and narrow desktop sizes on 2026-08-18 with no blocking layout/UX issue reported.
+
+Full closure evidence: `docs/evidence/M5_ROUTER_SWITCHING_2026-08-18.md`, issues #38–#43, and `docs/WORKLOG.md`.
+
+### M5 limitations retained explicitly
+
+- Pinned llama.cpp b10472 does not expose a supported dynamic default-model mutation route. LlamaManager persists a preferred target locally but requires live post-restart evidence before claiming readiness.
+- Residency/LRU and active-request fields are shown only when the selected runtime exposes evidence; unavailable remains explicit rather than guessed.
+- No known fake-ready, stale-authorization, false-reconciliation-success, dead-control, or permanent-busy defect remains open for M5 acceptance.
+
+## Previous tranche — M4
+
 Milestone 4 is **C5 — Complete** with a verified real Windows managed `llama-server` lifecycle:
 
 ```text
@@ -110,7 +142,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M4's final log-renderer fix head `305c6b1c3d5e92cfbfcc8290a0d36e3d0569d388` passed the complete PR pipeline in run `32111119407` before merge as `c25cda85c95fc96e897ecfa42997345199943d6e`.
+It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M5's final implementation head `a79e6445c0d520a7f6517555860f1b13f73ae31a` passed the complete PR pipeline in run `32143778017` before merge as `7626ca44d16f2b3b2b51e575fc2f09db19099b65`.
+
+The permanent Real Windows Runtime Validation workflow passed on the M5 implementation head in run `32143777993`, exercising pinned llama.cpp `b10472`, published GGUFs, strict source gates, real server readiness/inference, router discovery, real router mutations, A → B → A switching and restart/reconnect reconciliation.
+
+M4's final log-renderer fix head `305c6b1c3d5e92cfbfcc8290a0d36e3d0569d388` passed the complete PR pipeline in run `32111119407` before merge as `c25cda85c95fc96e897ecfa42997345199943d6e`.
 
 The permanent Real Windows Runtime Validation workflow also passed on the M4 server implementation path in run `32103995058`, exercising pinned llama.cpp `b10472`, published GGUFs, spaces/Unicode paths, strict source gates, real server readiness and minimal inference.
 
@@ -217,13 +253,3 @@ The Benchmark view showed the exact real `llama-bench.exe` invocation, reported 
 The operator-captured evidence and integrity hashes are recorded in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
 
 This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is **C5 — Complete**.
-
-## Workflow cleanup
-
-The active workflow set is intentionally limited to:
-
-- `ci.yml`
-- `release.yml`
-- `real-runtime-validation.yml`
-
-The real-runtime workflow is a permanent reproducible regression/evidence gate, not a temporary self-modifying validation workflow.
