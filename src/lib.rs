@@ -5,6 +5,7 @@ pub mod compatibility;
 pub mod config_write;
 pub mod error;
 pub mod gguf;
+pub mod hardware_telemetry;
 pub mod llama;
 pub mod model_library;
 pub mod model_library_actions;
