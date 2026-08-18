@@ -362,7 +362,12 @@ impl AlertEngine {
             return Err(error);
         }
 
-        self.states.retain(|key, _| key.rule_id != rule_id);
+        for (key, state) in &mut self.states {
+            if key.rule_id == rule_id {
+                state.trigger_window = None;
+                state.clear_window = None;
+            }
+        }
         Ok(())
     }
 
