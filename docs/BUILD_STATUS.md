@@ -2,7 +2,7 @@
 
 ## Current tranche
 
-Milestone 1 now has a verified real installation → model → benchmark backend path on Windows:
+Milestone 1 is **C5 — Complete** with a verified real installation → model → benchmark path on Windows, including the final human-operated GUI interaction:
 
 ```text
 select llama.cpp installation
@@ -11,11 +11,11 @@ select llama.cpp installation
 → select GGUF
 → inspect real GGUF metadata
 → preview exact llama-bench invocation
-→ execute llama-bench
+→ execute llama-bench from the GUI
 → retain raw stdout/stderr/exit status
 → parse benchmark samples
 → persist run/history in SQLite
-→ present the workflow in Dioxus
+→ present measured result/history in Dioxus
 ```
 
 The repository also contains implementation work for later milestones, but milestone promotion remains evidence-gated by `docs/10_COMPLETION_MATRIX.md` and the GitHub dependency graph.
@@ -32,7 +32,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. The final M1 runtime PR #97 passed the complete normal CI pipeline before merge.
+It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. The final source commit exercised by the M1 GUI acceptance session was `5a5ebb3fad92f7a25ad4f1f38822d03a48214e30`. Standard CI run `32094641702` passed the complete pipeline, and permanent real Windows runtime run `32094641715` passed the pinned llama.cpp/GGUF/benchmark checks plus real `llama-server` readiness and minimal inference validation.
 
 ## M1 real-runtime evidence — 2026-08-18
 
@@ -120,13 +120,17 @@ The run retained both binary and model SHA-256 identities. A real missing-model 
 
 The pinned upstream `llama-bench` b10472 build cannot load the same model when its Windows path contains Unicode; its own CLI/runtime boundary renders `模型` as `??` and exits non-zero. LlamaManager's GGUF parser successfully reads both real models from Unicode paths, and the upstream benchmark limitation is retained explicitly in the evidence artifact rather than hidden by fallback behavior.
 
-## Interactive UI evidence
+## Interactive UI evidence — C5 closure
 
-Issue #12 has completed native Windows visual verification: the release UI was captured and manually inspected at 1280×720 and 1600×900 and reported clean.
+Issue #12 completed native Windows visual verification: the release UI was captured and manually inspected at 1280×720 and 1600×900 and reported clean.
 
-The remaining M1 C5 gate is narrower: `docs/10_COMPLETION_MATRIX.md` requires one real benchmark to be launched through the interactive GUI path. The backend/runtime path and the rendered UI have each been verified independently, but those two facts are not being combined into an unsupported claim that the GUI-triggered benchmark interaction itself was exercised.
+On 2026-08-18 the repository owner then completed the remaining combined interaction against source commit `5a5ebb3fad92f7a25ad4f1f38822d03a48214e30` using `scripts/prepare-m1-gui-benchmark.ps1`. In the real release window, the prepared b10472 runtime and hash-pinned real GGUF were selected from paths containing spaces and the benchmark was started from the GUI.
 
-Until that final interaction is recorded, M1 should be treated as **C4 — runtime verified**, not C5.
+The Benchmark view showed the exact real `llama-bench.exe` invocation, reported completion with raw and parsed evidence retained, and displayed measured `pp512 41297.19 tok/s` and `tg128 3504.32 tok/s` results. The History view showed one persisted SQLite record with those values, and the Overview showed runtime detected, RPC backend, model ready, 433 discovered capabilities, and one persisted run.
+
+The operator-captured evidence and integrity hashes are recorded in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
+
+This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is therefore **C5 — Complete**.
 
 ## Workflow cleanup
 
