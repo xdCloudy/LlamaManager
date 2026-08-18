@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::{model_library_ui::ModelLibraryView, models_ini_ui::ModelsIniView};
+use crate::{
+    model_library_ui::ModelLibraryView, models_ini_ui::ModelsIniView,
+    server_ui::ServerLifecycleView,
+};
 
 #[path = "app.rs"]
 mod legacy_app;
@@ -71,13 +74,13 @@ const SHELL_CSS: &str = r#"
   white-space: normal;
 }
 
-@media (max-width: 680px) {
+@media (max-width: 760px) {
   .surface-switcher {
     left: 10px;
     right: 10px;
     justify-content: stretch;
   }
-  .surface-switcher button { flex: 1; padding: 0 6px; }
+  .surface-switcher button { flex: 1; padding: 0 5px; font-size: 7px; }
 }
 "#;
 
@@ -86,6 +89,7 @@ enum Surface {
     Lab,
     Models,
     Config,
+    Server,
 }
 
 #[allow(non_snake_case)]
@@ -100,8 +104,10 @@ pub fn App() -> Element {
             LegacyApp {}
         } else if current == Surface::Models {
             ModelLibraryView {}
-        } else {
+        } else if current == Surface::Config {
             ModelsIniView {}
+        } else {
+            ServerLifecycleView {}
         }
 
         nav { class: "surface-switcher", aria_label: "Workspace switcher",
@@ -119,6 +125,11 @@ pub fn App() -> Element {
                 class: if current == Surface::Config { "active" } else { "" },
                 onclick: move |_| surface.set(Surface::Config),
                 "CONFIG LAB"
+            }
+            button {
+                class: if current == Surface::Server { "active" } else { "" },
+                onclick: move |_| surface.set(Surface::Server),
+                "SERVER LAB"
             }
         }
     }

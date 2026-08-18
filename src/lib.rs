@@ -21,6 +21,9 @@ pub mod paths;
 pub mod persistence;
 pub mod profile_generator;
 pub mod server_command;
+pub mod server_console;
 pub mod server_logs;
 pub mod server_process;
 pub mod server_readiness;
+#[path = "server_ui_clean.rs"]
+pub mod server_ui;
