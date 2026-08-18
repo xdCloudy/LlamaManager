@@ -132,15 +132,17 @@ impl RouterOperationController {
         self.state
             .lock()
             .map(|state| state.clone())
-            .unwrap_or_else(|_| RouterOperationState::Failed(RouterOperationFailure {
-                kind: RouterOperationKind::ReloadRegistry,
-                source_model: None,
-                target_model: None,
-                started_at_unix_ms: 0,
-                failed_at_unix_ms: now_ms(),
-                message: "router operation state mutex is poisoned".into(),
-                last_registry: None,
-            }))
+            .unwrap_or_else(|_| {
+                RouterOperationState::Failed(RouterOperationFailure {
+                    kind: RouterOperationKind::ReloadRegistry,
+                    source_model: None,
+                    target_model: None,
+                    started_at_unix_ms: 0,
+                    failed_at_unix_ms: now_ms(),
+                    message: "router operation state mutex is poisoned".into(),
+                    last_registry: None,
+                })
+            })
     }
 
     pub fn reload_registry(
@@ -158,21 +160,17 @@ impl RouterOperationController {
             cancellation,
             |started_at| {
                 cancelled(cancellation)?;
-                let initial = discover_router_registry(installation, endpoint, model_store, timeout)?;
+                let initial =
+                    discover_router_registry(installation, endpoint, model_store, timeout)?;
                 require_router(&initial)?;
                 self.progress("refreshing router model registry", Some(initial));
 
-                let response = request(
-                    endpoint,
-                    "GET",
-                    "/models?reload=1",
-                    None,
-                    timeout,
-                )?;
+                let response = request(endpoint, "GET", "/models?reload=1", None, timeout)?;
                 ensure_mutation_success("/models?reload=1", &response)?;
                 cancelled(cancellation)?;
 
-                let registry = discover_router_registry(installation, endpoint, model_store, timeout)?;
+                let registry =
+                    discover_router_registry(installation, endpoint, model_store, timeout)?;
                 require_router(&registry)?;
                 Ok(RouterOperationEvidence {
                     kind: RouterOperationKind::ReloadRegistry,
@@ -184,8 +182,7 @@ impl RouterOperationController {
                     http_statuses: vec![response.status_code],
                     registry,
                     notes: vec![
-                        "GET /models?reload=1 succeeded and the live registry was re-read"
-                            .into(),
+                        "GET /models?reload=1 succeeded and the live registry was re-read".into(),
                     ],
                 })
             },
@@ -338,7 +335,8 @@ impl RouterOperationController {
             cancellation,
             |started_at| {
                 cancelled(cancellation)?;
-                let registry = discover_router_registry(installation, endpoint, model_store, timeout)?;
+                let registry =
+                    discover_router_registry(installation, endpoint, model_store, timeout)?;
                 require_router(&registry)?;
                 let target = registry_model(&registry, target_model)?;
                 self.progress(
@@ -526,7 +524,7 @@ impl RouterOperationController {
         kind: RouterOperationKind,
         source_model: Option<String>,
         target_model: Option<String>,
-        cancellation: &RouterOperationCancellation,
+        _cancellation: &RouterOperationCancellation,
         operation: F,
     ) -> Result<RouterOperationEvidence, RouterOperationError>
     where
@@ -636,7 +634,9 @@ pub enum RouterOperationError {
     #[error("router model `{model}` is not present in the live registry")]
     ModelNotFound { model: String },
 
-    #[error("router model `{model}` cannot be bound to one M2 model identity from exact path, SHA-256, or exact argv evidence")]
+    #[error(
+        "router model `{model}` cannot be bound to one M2 model identity from exact path, SHA-256, or exact argv evidence"
+    )]
     ModelIdentityUnproven { model: String },
 
     #[error("router model `{model}` maps ambiguously to M2 model identities: {candidates:?}")]
@@ -680,7 +680,9 @@ pub enum RouterOperationError {
     #[error("router operation cancelled")]
     Cancelled,
 
-    #[error("timed out waiting for router model `{model}` to become {expected}; last phase={last_phase}")]
+    #[error(
+        "timed out waiting for router model `{model}` to become {expected}; last phase={last_phase}"
+    )]
     Timeout {
         model: String,
         expected: String,
@@ -738,11 +740,12 @@ fn resolve_library_model(
             });
     }
 
-    let records = model_store
-        .list_model_records()
-        .map_err(|error| RouterOperationError::ModelStore {
-            message: error.to_string(),
-        })?;
+    let records =
+        model_store
+            .list_model_records()
+            .map_err(|error| RouterOperationError::ModelStore {
+                message: error.to_string(),
+            })?;
     let mut candidates = Vec::new();
     for record in records {
         let exact_path = router_model
@@ -791,13 +794,18 @@ where
     F: Fn(&RouterModelPhase) -> bool,
 {
     let deadline = Instant::now() + timeout;
-    let mut last_phase = "unknown".to_string();
     loop {
         if cancellation.is_cancelled() {
-            if let Ok(registry) =
-                discover_router_registry(installation, endpoint, model_store, Duration::from_secs(2))
-            {
-                controller.progress("operation cancelled; final live registry captured", Some(registry));
+            if let Ok(registry) = discover_router_registry(
+                installation,
+                endpoint,
+                model_store,
+                Duration::from_secs(2),
+            ) {
+                controller.progress(
+                    "operation cancelled; final live registry captured",
+                    Some(registry),
+                );
             }
             return Err(RouterOperationError::Cancelled);
         }
@@ -810,7 +818,7 @@ where
         )?;
         require_router(&registry)?;
         let model = registry_model(&registry, model_id)?;
-        last_phase = format!("{:?}", model.status.phase);
+        let last_phase = format!("{:?}", model.status.phase);
         controller.progress(
             format!("{model_id}: observed {last_phase}; waiting for {expected}"),
             Some(registry.clone()),
@@ -860,7 +868,10 @@ fn registry_model<'a>(
 }
 
 fn is_ready(phase: &RouterModelPhase) -> bool {
-    matches!(phase, RouterModelPhase::Loaded | RouterModelPhase::Sleeping)
+    matches!(
+        phase,
+        RouterModelPhase::Loaded | RouterModelPhase::Sleeping
+    )
 }
 
 fn is_running(phase: &RouterModelPhase) -> bool {
@@ -1026,12 +1037,11 @@ fn ensure_success_json(
     response: &OperationHttpResponse,
 ) -> Result<(), RouterOperationError> {
     ensure_mutation_success(path, response)?;
-    let body: Value = serde_json::from_str(&response.body).map_err(|_| {
-        RouterOperationError::ProtocolDrift {
+    let body: Value =
+        serde_json::from_str(&response.body).map_err(|_| RouterOperationError::ProtocolDrift {
             path: path.into(),
             body_excerpt: response.body.chars().take(4096).collect(),
-        }
-    })?;
+        })?;
     if body.get("success").and_then(Value::as_bool) == Some(true) {
         Ok(())
     } else {
