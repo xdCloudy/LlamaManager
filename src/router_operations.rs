@@ -670,7 +670,7 @@ pub enum RouterOperationError {
     #[error("router operation {path} returned HTTP {status_code}: {body_excerpt}")]
     HttpFailure {
         path: String,
-        status_code,
+        status_code: u16,
         body_excerpt: String,
     },
 
