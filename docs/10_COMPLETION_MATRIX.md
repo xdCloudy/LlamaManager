@@ -50,7 +50,7 @@ Legend: `✅` satisfied, `🟡` implemented/partially evidenced but not closure-
 |---|---:|---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **M0 Clean baseline** | — | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M1 Real installation → benchmark** | #1 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **M2 Model library + compatibility** | #2 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **M2 Model library + compatibility** | #2 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M3 `models.ini`** | #3 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M4 Server lifecycle** | #4 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M5 Router + switching** | #5 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -90,21 +90,25 @@ C5 requires all of the following:
 
 ## M2 — Model library + compatibility
 
+**Current state:** C5 — Complete. Final interactive evidence: `docs/evidence/M2_MODEL_LIBRARY_2026-08-18.md`.
+
 C5 requires:
 
-- [ ] Recursive scan discovers real GGUF files from arbitrary user-selected roots.
-- [ ] Manual GGUF add works without requiring a scan root.
-- [ ] Duplicate models resolve deterministically using stable file identity/evidence.
-- [ ] Missing and moved files are detected and repair/relink flow is verified.
-- [ ] GGUF inspector exposes required architecture/context/quantization/tensor metadata from file contents.
-- [ ] Installation ↔ model compatibility report explains *why* a pairing is accepted, limited, or rejected.
-- [ ] Unsupported architecture is never silently accepted.
-- [ ] Capability decisions do not depend on model filenames.
-- [ ] Multimodal projector discovery/association is evidence-backed and ambiguity is surfaced.
-- [ ] Paths with spaces and Unicode are covered by automated fixtures and real Windows validation.
-- [ ] Library state survives restart and stale entries are represented truthfully.
-- [ ] Failure paths for corrupt/truncated/unreadable GGUFs are tested.
-- [ ] Docs and matrix are updated with observed compatibility limitations.
+- [x] Recursive scan discovers real GGUF files from arbitrary user-selected roots.
+- [x] Manual GGUF add works without requiring a scan root.
+- [x] Duplicate models resolve deterministically using stable file identity/evidence.
+- [x] Missing and moved files are detected and repair/relink flow is verified.
+- [x] GGUF inspector exposes required architecture/context/quantization/tensor metadata from file contents.
+- [x] Installation ↔ model compatibility report explains *why* a pairing is accepted, limited, or rejected.
+- [x] Unsupported architecture is never silently accepted.
+- [x] Capability decisions do not depend on model filenames.
+- [x] Multimodal projector discovery/association is evidence-backed and ambiguity is surfaced.
+- [x] Paths with spaces and Unicode are covered by automated fixtures and real Windows validation.
+- [x] Library state survives restart and stale entries are represented truthfully.
+- [x] Failure paths for corrupt/truncated/unreadable GGUFs are tested.
+- [x] Docs and matrix are updated with observed compatibility limitations.
+
+The interactive closure used a text-only model, so mmproj behaviour is closure-grade automated evidence rather than an interactive multimodal claim. No numeric large-library throughput bound is claimed. These scope limits are recorded in the M2 evidence file.
 
 ## M3 — `models.ini` parser, editor and generator
 
