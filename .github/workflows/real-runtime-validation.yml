@@ -1,0 +1,116 @@
+name: Real Windows Runtime Validation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/real-runtime-validation.yml"
+      - "tests/real_runtime_validation.rs"
+      - "src/benchmark.rs"
+      - "src/gguf.rs"
+      - "src/llama.rs"
+      - "src/persistence.rs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-runtime:
+    name: Real llama.cpp + GGUF + benchmark
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      LLAMA_RELEASE_TAG: b10472
+      LLAMA_ARCHIVE_URL: https://github.com/ggml-org/llama.cpp/releases/download/b10472/llama-b10472-bin-win-cpu-x64.zip
+      MODEL_URL: https://huggingface.co/ggml-org/tiny-llamas/resolve/6e091d820cbe8f22eeb604d136403eca290b8c1e/stories15M-q4_0.gguf?download=true
+      MODEL_SHA256: 6151b1929d7f5aa3385d9ddef3393e55587c0a55de661562322bc51dfda93a04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download pinned upstream llama.cpp and published GGUF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtimeRoot = Join-Path $env:RUNNER_TEMP 'external llama cpp 外部 build'
+          $modelRoot = Join-Path $env:RUNNER_TEMP 'Models with spaces 模型'
+          $evidenceRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts\real-runtime'
+          $archive = Join-Path $env:RUNNER_TEMP 'llama-win-cpu.zip'
+          $model = Join-Path $modelRoot 'stories 15M 模型.gguf'
+
+          New-Item -ItemType Directory -Force -Path $runtimeRoot, $modelRoot, $evidenceRoot | Out-Null
+
+          Invoke-WebRequest -Uri $env:LLAMA_ARCHIVE_URL -OutFile $archive
+          $archiveSha = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          Expand-Archive -Path $archive -DestinationPath $runtimeRoot -Force
+
+          Invoke-WebRequest -Uri $env:MODEL_URL -OutFile $model
+          $modelSha = (Get-FileHash -Path $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($modelSha -ne $env:MODEL_SHA256) {
+            throw "Published GGUF SHA-256 mismatch. Expected $env:MODEL_SHA256, got $modelSha"
+          }
+
+          $server = Get-ChildItem -Path $runtimeRoot -Filter llama-server.exe -File -Recurse | Select-Object -First 1
+          $bench = Get-ChildItem -Path $runtimeRoot -Filter llama-bench.exe -File -Recurse | Select-Object -First 1
+          if (-not $server -or -not $bench) {
+            throw 'Pinned llama.cpp archive does not contain llama-server.exe and llama-bench.exe'
+          }
+
+          "LLAMAMANAGER_REAL_LLAMA_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_REAL_MODEL=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_REAL_MODEL_SHA256=$modelSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_REAL_EVIDENCE_DIR=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_LLAMA_RELEASE_TAG=$env:LLAMA_RELEASE_TAG" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLAMAMANAGER_LLAMA_ARCHIVE_SHA256=$archiveSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          [ordered]@{
+            llama_release_tag = $env:LLAMA_RELEASE_TAG
+            llama_archive_url = $env:LLAMA_ARCHIVE_URL
+            llama_archive_sha256 = $archiveSha
+            model_url = $env:MODEL_URL
+            model_sha256 = $modelSha
+            runtime_root = $runtimeRoot
+            model_path = $model
+            server_path = $server.FullName
+            bench_path = $bench.FullName
+            windows = [System.Environment]::OSVersion.VersionString
+          } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $evidenceRoot 'download-identities.json') -Encoding utf8
+
+      - name: Strict source gates
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run real Windows runtime validation
+        shell: pwsh
+        run: cargo test --test real_runtime_validation -- --ignored --nocapture
+
+      - name: Show evidence summary
+        if: always()
+        shell: pwsh
+        run: |
+          $summary = 'artifacts\real-runtime\summary.json'
+          if (Test-Path $summary) { Get-Content $summary }
+
+      - name: Upload real runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-windows-runtime-evidence
+          path: artifacts/real-runtime/
+          if-no-files-found: error
+          retention-days: 30
