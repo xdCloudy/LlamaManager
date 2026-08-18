@@ -60,6 +60,7 @@ pub struct ServerLogSnapshot {
     pub retained_bytes: usize,
     pub retention_limit_bytes: usize,
     pub evicted_entries: u64,
+    pub disk_error: Option<String>,
 }
 
 impl ServerLogSnapshot {
@@ -110,7 +111,12 @@ impl ServerLogBuffer {
         }
     }
 
-    pub fn push(&self, pid: u32, stream: ServerLogStream, text: impl Into<String>) -> ServerLogEntry {
+    pub fn push(
+        &self,
+        pid: u32,
+        stream: ServerLogStream,
+        text: impl Into<String>,
+    ) -> ServerLogEntry {
         let mut text = text.into();
         let mut truncated = false;
         if text.len() > self.retention_limit_bytes {
@@ -151,6 +157,7 @@ impl ServerLogBuffer {
             retained_bytes: inner.retained_bytes,
             retention_limit_bytes: self.retention_limit_bytes,
             evicted_entries: inner.evicted_entries,
+            disk_error: None,
         }
     }
 }
@@ -174,7 +181,9 @@ impl BoundedServerLogFile {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let current_bytes = fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
+        let current_bytes = fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
         Ok(Self {
             path,
             retention_limit_bytes: retention_limit_bytes.max(1),
@@ -214,6 +223,7 @@ impl BoundedServerLogFile {
 pub struct ServerLogCapture {
     buffer: ServerLogBuffer,
     disk: Option<Arc<Mutex<BoundedServerLogFile>>>,
+    disk_error: Arc<Mutex<Option<String>>>,
 }
 
 impl ServerLogCapture {
@@ -221,6 +231,7 @@ impl ServerLogCapture {
         Self {
             buffer: ServerLogBuffer::new(retention_limit_bytes),
             disk: None,
+            disk_error: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -237,20 +248,36 @@ impl ServerLogCapture {
                 disk_retention_bytes,
                 secrets,
             )?))),
+            disk_error: Arc::new(Mutex::new(None)),
         })
     }
 
     pub fn push(&self, pid: u32, stream: ServerLogStream, text: impl Into<String>) {
         let entry = self.buffer.push(pid, stream, text);
-        if let Some(disk) = &self.disk
-            && let Ok(mut disk) = disk.lock()
+        let Some(disk) = &self.disk else {
+            return;
+        };
+        let result = disk
+            .lock()
+            .map_err(|_| "bounded server log file mutex poisoned".to_string())
+            .and_then(|mut disk| {
+                disk.append(&entry)
+                    .map_err(|error| format!("failed to append bounded server log file: {error}"))
+            });
+        if let Err(error) = result
+            && let Ok(mut slot) = self.disk_error.lock()
         {
-            let _ = disk.append(&entry);
+            *slot = Some(error);
         }
     }
 
     pub fn snapshot(&self) -> ServerLogSnapshot {
-        self.buffer.snapshot()
+        let mut snapshot = self.buffer.snapshot();
+        snapshot.disk_error = match self.disk_error.lock() {
+            Ok(error) => error.clone(),
+            Err(_) => Some("server log disk-error state mutex poisoned".into()),
+        };
+        snapshot
     }
 }
 
@@ -270,7 +297,11 @@ fn encode_entry(entry: &ServerLogEntry) -> Vec<u8> {
             ServerLogStream::Stdout => "stdout",
             ServerLogStream::Stderr => "stderr",
         },
-        if entry.truncated { "truncated" } else { "complete" },
+        if entry.truncated {
+            "truncated"
+        } else {
+            "complete"
+        },
         entry.text.replace('\n', "\\n").replace('\r', "\\r")
     )
     .into_bytes()
@@ -314,7 +345,9 @@ fn redact_bearer_tokens(text: &str) -> String {
         let prefix_end = index + "bearer ".len();
         output.push_str(&remaining[..prefix_end]);
         remaining = &remaining[prefix_end..];
-        let token_end = remaining.find(char::is_whitespace).unwrap_or(remaining.len());
+        let token_end = remaining
+            .find(char::is_whitespace)
+            .unwrap_or(remaining.len());
         output.push_str("<redacted>");
         remaining = &remaining[token_end..];
     }
@@ -468,16 +501,22 @@ mod tests {
     fn bounded_buffer_evicts_old_entries_without_exceeding_limit() {
         let logs = ServerLogBuffer::new(128);
         for index in 0..1000 {
-            logs.push(42, ServerLogStream::Stdout, format!("line-{index:04}-xxxxxxxx"));
+            logs.push(
+                42,
+                ServerLogStream::Stdout,
+                format!("line-{index:04}-xxxxxxxx"),
+            );
         }
         let snapshot = logs.snapshot();
         assert!(snapshot.retained_bytes <= 128);
         assert!(snapshot.evicted_entries > 0);
         assert!(!snapshot.entries.is_empty());
-        assert!(snapshot
-            .entries
-            .windows(2)
-            .all(|pair| pair[0].sequence < pair[1].sequence));
+        assert!(
+            snapshot
+                .entries
+                .windows(2)
+                .all(|pair| pair[0].sequence < pair[1].sequence)
+        );
     }
 
     #[test]
@@ -511,13 +550,9 @@ mod tests {
     fn bounded_disk_capture_stays_within_limit_and_redacts_secrets() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("server logs 模型").join("server.log");
-        let capture = ServerLogCapture::with_disk(
-            path.clone(),
-            1024,
-            256,
-            vec!["secret-value".into()],
-        )
-        .unwrap();
+        let capture =
+            ServerLogCapture::with_disk(path.clone(), 1024, 256, vec!["secret-value".into()])
+                .unwrap();
         for index in 0..100 {
             capture.push(
                 12,
@@ -531,6 +566,7 @@ mod tests {
         assert!(!text.contains("secret-value"));
         assert!(!text.contains("Bearer tok-"));
         assert!(text.contains("<redacted>"));
+        assert!(capture.snapshot().disk_error.is_none());
     }
 
     #[test]
