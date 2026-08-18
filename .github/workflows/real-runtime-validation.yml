@@ -7,11 +7,13 @@ on:
       - "tests/real_runtime_validation.rs"
       - "tests/real_server_readiness.rs"
       - "tests/real_router_discovery.rs"
+      - "tests/real_router_operations.rs"
       - "src/benchmark.rs"
       - "src/gguf.rs"
       - "src/llama.rs"
       - "src/persistence.rs"
       - "src/router.rs"
+      - "src/router_operations.rs"
       - "src/server_command.rs"
       - "src/server_process.rs"
       - "src/server_readiness.rs"
@@ -22,7 +24,7 @@ permissions:
 
 jobs:
   real-runtime:
-    name: Real llama.cpp + GGUF + benchmark + server + router
+    name: Real llama.cpp + GGUF + benchmark + server + router operations
     runs-on: windows-2025
     timeout-minutes: 30
     env:
@@ -137,6 +139,10 @@ jobs:
         shell: pwsh
         run: cargo test --test real_router_discovery -- --ignored --nocapture
 
+      - name: Run real llama-server router operation validation
+        shell: pwsh
+        run: cargo test --test real_router_operations -- --ignored --nocapture
+
       - name: Show evidence summary
         if: always()
         shell: pwsh
@@ -147,6 +153,8 @@ jobs:
           if (Test-Path $readiness) { Get-Content $readiness }
           $router = 'artifacts\real-runtime\router-discovery.json'
           if (Test-Path $router) { Get-Content $router }
+          $routerOperations = 'artifacts\real-runtime\router-operations.json'
+          if (Test-Path $routerOperations) { Get-Content $routerOperations }
 
       - name: Upload real runtime evidence
         if: always()
