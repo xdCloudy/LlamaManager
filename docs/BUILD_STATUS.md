@@ -2,6 +2,40 @@
 
 ## Current tranche
 
+Milestone 4 is **C5 — Complete** with a verified real Windows managed `llama-server` lifecycle:
+
+```text
+select real llama.cpp runtime + GGUF
+→ build executable + argv from discovered capability evidence
+→ preflight host/port/config
+→ launch under a Windows Job Object
+→ stream bounded stdout/stderr and retain redacted evidence
+→ require health + real minimal /completion inference before Ready
+→ expose truthful start/stop/restart/force-kill state in SERVER LAB
+→ reconcile crash/failed-start/occupied-port/restart state
+→ exercise readiness timeout without fake success
+→ exercise 5s graceful-stop expiry without fake stopped state
+→ force-kill the managed process tree
+→ verify no listener/process leak remains
+```
+
+Server log/lifecycle implementation: PR #123, merge commit `a1700e89f913102f1fb513905cb0a5034e77c945`.
+
+Rendered SERVER LAB implementation: PR #124, merge commit `6797875ea3805b4001bf7c378d0907c005daa9c9`.
+
+Interactive QA found that llama.cpp's normal stderr diagnostics were being presented as errors. PR #125 (`2f6d822e948b025e673f59775541b9ca5961716d`) corrected severity classification, and PR #126 (`c25cda85c95fc96e897ecfa42997345199943d6e`) corrected the visible INFO/WARN/ERR/FATAL renderer.
+
+The repository owner completed the real Windows lifecycle matrix: start → real `/completion` readiness, graceful stop, restart, occupied-port handling, external crash, invalid-GGUF failed start, readiness timeout, destructive force-kill confirmation, deterministic five-second graceful-stop expiry, Job Object force-kill and final `Port8080Listening=False` cleanup verification.
+
+Full closure evidence: `docs/evidence/M4_SERVER_LIFECYCLE_2026-08-18.md`, issues #31–#36, and `docs/WORKLOG.md`.
+
+### M4 limitations retained explicitly
+
+- Interactive runs sometimes surface a best-effort managed-console auto-hide warning (`ERROR_INVALID_HANDLE`). It does not affect ownership, readiness, log capture, stop/restart, force-kill or cleanup truth and is treated as presentation polish rather than lifecycle correctness evidence.
+- No known leaked-process, fake-ready, fake-stopped, swallowed-failure or dead lifecycle-control defect remains open for M4 acceptance.
+
+## Previous tranche — M3
+
 Milestone 3 is **C5 — Complete** with a verified real Windows `models.ini` parser/editor/write/generator workflow:
 
 ```text
@@ -76,7 +110,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M3's final UI-fix commit `5b7f468ed4b238a7e7fa037612df0a9cdf2130f7` passed the complete PR pipeline in run `32102022938` before merge as `35dd7e1ad27263fc6d00d7b61c90fc31801f3ac2`.
+It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M4's final log-renderer fix head `305c6b1c3d5e92cfbfcc8290a0d36e3d0569d388` passed the complete PR pipeline in run `32111119407` before merge as `c25cda85c95fc96e897ecfa42997345199943d6e`.
+
+The permanent Real Windows Runtime Validation workflow also passed on the M4 server implementation path in run `32103995058`, exercising pinned llama.cpp `b10472`, published GGUFs, spaces/Unicode paths, strict source gates, real server readiness and minimal inference.
+
+M3's final UI-fix commit `5b7f468ed4b238a7e7fa037612df0a9cdf2130f7` passed the complete PR pipeline in run `32102022938` before merge as `35dd7e1ad27263fc6d00d7b61c90fc31801f3ac2`.
 
 M2's final implementation commit `a504eb6a1181dbcccf7b0a4191d5a0200607a463` passed the complete pipeline in run `32098153891`.
 
@@ -177,15 +215,3 @@ On 2026-08-18 the repository owner then completed the remaining combined interac
 The Benchmark view showed the exact real `llama-bench.exe` invocation, reported completion with raw and parsed evidence retained, and displayed measured `pp512 41297.19 tok/s` and `tg128 3504.32 tok/s` results. The History view showed one persisted SQLite record with those values, and the Overview showed runtime detected, RPC backend, model ready, 433 discovered capabilities, and one persisted run.
 
 The operator-captured evidence and integrity hashes are recorded in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
-
-This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is **C5 — Complete**.
-
-## Workflow cleanup
-
-The active workflow set is intentionally limited to:
-
-- `ci.yml`
-- `release.yml`
-- `real-runtime-validation.yml`
-
-The real-runtime workflow is a permanent reproducible regression/evidence gate, not a temporary self-modifying validation workflow.
