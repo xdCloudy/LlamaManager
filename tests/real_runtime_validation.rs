@@ -13,17 +13,21 @@ fn required_env(name: &str) -> String {
 }
 
 #[test]
-#[ignore = "requires pinned real Windows llama.cpp binaries and a published GGUF model"]
+#[ignore = "requires pinned real Windows llama.cpp binaries and published GGUF models"]
 fn validates_real_windows_runtime_end_to_end() {
     let llama_root = PathBuf::from(required_env("LLAMAMANAGER_REAL_LLAMA_ROOT"));
     let model_path = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL"));
+    let model_v2_path = PathBuf::from(required_env("LLAMAMANAGER_REAL_MODEL_V2"));
     let evidence_dir = PathBuf::from(required_env("LLAMAMANAGER_REAL_EVIDENCE_DIR"));
     let expected_model_sha = required_env("LLAMAMANAGER_REAL_MODEL_SHA256").to_ascii_lowercase();
+    let expected_model_v2_sha =
+        required_env("LLAMAMANAGER_REAL_MODEL_V2_SHA256").to_ascii_lowercase();
 
     fs::create_dir_all(&evidence_dir).unwrap();
 
     let root_text = llama_root.to_string_lossy();
     let model_text = model_path.to_string_lossy();
+    let model_v2_text = model_v2_path.to_string_lossy();
     assert!(root_text.contains(' '), "runtime path must exercise spaces");
     assert!(
         root_text.contains('外'),
@@ -33,6 +37,11 @@ fn validates_real_windows_runtime_end_to_end() {
     assert!(
         model_text.contains('模'),
         "model path must exercise Unicode"
+    );
+    assert!(model_v2_text.contains(' '), "v2 path must exercise spaces");
+    assert!(
+        model_v2_text.contains('模'),
+        "v2 path must exercise Unicode"
     );
 
     // #13: inspect a real, external llama.cpp installation and retain exact
@@ -72,19 +81,36 @@ fn validates_real_windows_runtime_end_to_end() {
     .unwrap();
     assert!(inspect_installation(&fake_root).is_err());
 
-    // #14: inspect a published GGUF rather than a generated test fixture and
-    // pin its externally published identity.
+    // #14: inspect two independently published GGUF artifacts. The tiny model
+    // used for the real benchmark is v3; the older TinyLlama quant is an
+    // explicitly published GGUF v2 artifact pinned by commit + SHA-256.
     let model = inspect_gguf(&model_path).unwrap();
     assert_eq!(model.sha256.to_ascii_lowercase(), expected_model_sha);
-    assert!((2..=3).contains(&model.gguf_version));
+    assert_eq!(model.gguf_version, 3);
     assert!(model.tensor_count > 0);
     assert!(model.metadata_count > 0);
     assert!(model.architecture.is_some());
+    assert!(!model.metadata.is_empty());
+
+    let model_v2 = inspect_gguf(&model_v2_path).unwrap();
+    assert_eq!(
+        model_v2.sha256.to_ascii_lowercase(),
+        expected_model_v2_sha
+    );
+    assert_eq!(model_v2.gguf_version, 2);
+    assert!(model_v2.tensor_count > 0);
+    assert!(model_v2.metadata_count > 0);
+    assert!(model_v2.architecture.is_some());
+    assert!(!model_v2.metadata.is_empty());
 
     let corrupt_path = evidence_dir.join("corrupt truncated 模型.gguf");
     fs::write(&corrupt_path, b"GGUF\x03\x00").unwrap();
     assert!(inspect_gguf(&corrupt_path).is_err());
     assert!(inspect_gguf(&evidence_dir.join("missing.gguf")).is_err());
+
+    let not_a_file = evidence_dir.join("unreadable as file 模型.gguf");
+    fs::create_dir_all(&not_a_file).unwrap();
+    assert!(inspect_gguf(&not_a_file).is_err());
 
     // #15: execute the actual upstream llama-bench binary through product code,
     // retain stdout/stderr/argv/exit status, then persist and reload history.
@@ -127,8 +153,13 @@ fn validates_real_windows_runtime_end_to_end() {
     )
     .unwrap();
     fs::write(
-        evidence_dir.join("model.json"),
+        evidence_dir.join("model-v3.json"),
         serde_json::to_vec_pretty(&model).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        evidence_dir.join("model-v2.json"),
+        serde_json::to_vec_pretty(&model_v2).unwrap(),
     )
     .unwrap();
     fs::write(
@@ -148,12 +179,18 @@ fn validates_real_windows_runtime_end_to_end() {
         "bench_sha256": bench.sha256,
         "detected_backend": installation.backend,
         "capability_count": installation.capabilities.len(),
-        "model_path": model_path,
-        "model_sha256": model.sha256,
-        "gguf_version": model.gguf_version,
-        "architecture": model.architecture,
-        "tensor_count": model.tensor_count,
-        "metadata_count": model.metadata_count,
+        "model_v3_path": model_path,
+        "model_v3_sha256": model.sha256,
+        "model_v3_gguf_version": model.gguf_version,
+        "model_v3_architecture": model.architecture,
+        "model_v3_tensor_count": model.tensor_count,
+        "model_v3_metadata_count": model.metadata_count,
+        "model_v2_path": model_v2_path,
+        "model_v2_sha256": model_v2.sha256,
+        "model_v2_gguf_version": model_v2.gguf_version,
+        "model_v2_architecture": model_v2.architecture,
+        "model_v2_tensor_count": model_v2.tensor_count,
+        "model_v2_metadata_count": model_v2.metadata_count,
         "benchmark_exit_code": run.exit_code,
         "benchmark_arguments": run.arguments,
         "benchmark_sample_count": run.samples.len(),
@@ -164,6 +201,7 @@ fn validates_real_windows_runtime_end_to_end() {
         "negative_non_executable_rejected": true,
         "negative_corrupt_gguf_rejected": true,
         "negative_missing_gguf_rejected": true,
+        "negative_non_file_gguf_rejected": true,
         "negative_benchmark_nonzero_typed": true
     });
     fs::write(
