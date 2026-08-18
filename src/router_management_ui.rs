@@ -83,7 +83,11 @@ pub fn verify_preferred_model(
         };
     }
     let Some(model) = snapshot.registry.models.iter().find(|model| {
-        model.id == *preferred || model.routing_targets.iter().any(|target| target == preferred)
+        model.id == *preferred
+            || model
+                .routing_targets
+                .iter()
+                .any(|target| target == preferred)
     }) else {
         return PreferredModelVerification::Missing {
             model: preferred.clone(),
@@ -121,7 +125,10 @@ fn load_preferences(paths: &AppPaths) -> Result<RouterControlPreferences, String
     serde_json::from_slice(&bytes).map_err(|error| format!("parse {}: {error}", path.display()))
 }
 
-fn save_preferences(paths: &AppPaths, preferences: &RouterControlPreferences) -> Result<(), String> {
+fn save_preferences(
+    paths: &AppPaths,
+    preferences: &RouterControlPreferences,
+) -> Result<(), String> {
     let path = preferences_path(paths);
     let payload = serde_json::to_vec_pretty(preferences).map_err(|error| error.to_string())?;
     fs::write(&path, payload).map_err(|error| format!("write {}: {error}", path.display()))
@@ -173,7 +180,10 @@ impl ControlState {
         let paths = match AppPaths::detect() {
             Ok(paths) => Some(paths),
             Err(error) => {
-                notice = Some((false, format!("Could not resolve application paths: {error}")));
+                notice = Some((
+                    false,
+                    format!("Could not resolve application paths: {error}"),
+                ));
                 None
             }
         };
@@ -192,7 +202,10 @@ impl ControlState {
             match Database::open(paths.database.clone()).and_then(|db| db.latest_installation()) {
                 Ok(value) => value,
                 Err(error) => {
-                    notice = Some((false, format!("Could not reload persisted runtime evidence: {error}")));
+                    notice = Some((
+                        false,
+                        format!("Could not reload persisted runtime evidence: {error}"),
+                    ));
                     None
                 }
             }
@@ -249,7 +262,12 @@ fn open_store(paths: &AppPaths) -> Result<ModelStore, String> {
 
 fn reconcile_selection(state: &mut ControlState, snapshot: &RouterObservabilitySnapshot) {
     let valid = |selected: Option<&str>| {
-        selected.is_some_and(|selected| snapshot.models.iter().any(|model| model.model.id == selected))
+        selected.is_some_and(|selected| {
+            snapshot
+                .models
+                .iter()
+                .any(|model| model.model.id == selected)
+        })
     };
     if !valid(state.selected_target.as_deref()) {
         state.selected_target = snapshot.models.first().map(|model| model.model.id.clone());
@@ -280,7 +298,10 @@ fn refresh_runtime(mut state: ControlSignal) {
         match result {
             Ok(installation) => {
                 current.installation = installation;
-                current.notice = Some((true, "Reloaded persisted llama.cpp runtime evidence.".into()));
+                current.notice = Some((
+                    true,
+                    "Reloaded persisted llama.cpp runtime evidence.".into(),
+                ));
             }
             Err(error) => current.notice = Some((false, error.to_string())),
         }
@@ -290,7 +311,10 @@ fn refresh_runtime(mut state: ControlSignal) {
 fn refresh_router(mut state: ControlSignal) {
     let snapshot = state.read().clone();
     let Some(installation) = snapshot.installation.clone() else {
-        state.write().notice = Some((false, "No persisted llama.cpp installation is selected. Select one in CORE LAB first.".into()));
+        state.write().notice = Some((
+            false,
+            "No persisted llama.cpp installation is selected. Select one in CORE LAB first.".into(),
+        ));
         return;
     };
     let endpoint = match endpoint_from_state(&snapshot) {
@@ -333,7 +357,10 @@ fn run_action(
 ) {
     let snapshot = state.read().clone();
     if snapshot.busy() {
-        state.write().notice = Some((false, "Another router operation or refresh is already running.".into()));
+        state.write().notice = Some((
+            false,
+            "Another router operation or refresh is already running.".into(),
+        ));
         return;
     }
     let Some(installation) = snapshot.installation.clone() else {
@@ -465,8 +492,20 @@ fn run_action(
         }
         current.tracker.reconcile(refreshed);
         current.notice = match result {
-            Ok(()) => Some((true, format!("{} completed and live state was reconciled.", action.label()))),
-            Err(error) => Some((false, format!("{} failed: {error}. Controller evidence is retained below.", action.label()))),
+            Ok(()) => Some((
+                true,
+                format!(
+                    "{} completed and live state was reconciled.",
+                    action.label()
+                ),
+            )),
+            Err(error) => Some((
+                false,
+                format!(
+                    "{} failed: {error}. Controller evidence is retained below.",
+                    action.label()
+                ),
+            )),
         };
     });
 }
@@ -489,7 +528,11 @@ fn persist_preferences(mut state: ControlSignal) {
     match save_preferences(paths, &preferences) {
         Ok(()) => {
             state.write().preferences = preferences;
-            state.write().notice = Some((true, "Endpoint preferences persisted. API keys are session-only and were not written.".into()));
+            state.write().notice = Some((
+                true,
+                "Endpoint preferences persisted. API keys are session-only and were not written."
+                    .into(),
+            ));
         }
         Err(error) => state.write().notice = Some((false, error)),
     }
@@ -510,7 +553,12 @@ fn set_preferred(mut state: ControlSignal) {
     match save_preferences(paths, &preferences) {
         Ok(()) => {
             state.write().preferences = preferences;
-            state.write().notice = Some((true, format!("Preferred target `{model}` persisted. It remains unverified until live post-restart reconciliation proves readiness.")));
+            state.write().notice = Some((
+                true,
+                format!(
+                    "Preferred target `{model}` persisted. It remains unverified until live post-restart reconciliation proves readiness."
+                ),
+            ));
         }
         Err(error) => state.write().notice = Some((false, error)),
     }
@@ -536,7 +584,11 @@ fn action_support(state: &ControlState, action: RequestedAction) -> (bool, Strin
         return (false, "another refresh or operation is running".into());
     }
     if !state.tracker.is_live() {
-        return (false, "requires a live reconciled router snapshot; stale state cannot authorize mutation".into());
+        return (
+            false,
+            "requires a live reconciled router snapshot; stale state cannot authorize mutation"
+                .into(),
+        );
     }
     let Some(snapshot) = state.tracker.current.as_ref() else {
         return (false, "no live router snapshot".into());
@@ -562,7 +614,10 @@ fn freshness_class(value: RouterSnapshotFreshness) -> &'static str {
 
 fn phase_text(model: &RouterModelObservability) -> (String, &'static str) {
     if model.model.status.failed {
-        return (format!("FAILED · {:?}", model.model.status.phase), "rm-error");
+        return (
+            format!("FAILED · {:?}", model.model.status.phase),
+            "rm-error",
+        );
     }
     match &model.model.status.phase {
         RouterModelPhase::Loaded => ("LOADED".into(), "rm-live"),
@@ -577,13 +632,18 @@ fn phase_text(model: &RouterModelObservability) -> (String, &'static str) {
 fn residency_text(model: &RouterModelObservability) -> (String, &'static str) {
     match (model.residency.availability, model.residency.value) {
         (EvidenceAvailability::Observed, Some(true)) => ("RESIDENT · OBSERVED".into(), "rm-live"),
-        (EvidenceAvailability::Observed, Some(false)) => ("NOT RESIDENT · OBSERVED".into(), "rm-warn"),
+        (EvidenceAvailability::Observed, Some(false)) => {
+            ("NOT RESIDENT · OBSERVED".into(), "rm-warn")
+        }
         _ => ("UNKNOWN / UNAVAILABLE".into(), "rm-warn"),
     }
 }
 
 fn active_text(model: &RouterModelObservability) -> (String, &'static str) {
-    match (model.active_requests.availability, model.active_requests.value) {
+    match (
+        model.active_requests.availability,
+        model.active_requests.value,
+    ) {
         (EvidenceAvailability::Observed, Some(0)) => ("0 · OBSERVED".into(), "rm-live"),
         (EvidenceAvailability::Observed, Some(value)) => (format!("{value} · ACTIVE"), "rm-error"),
         _ => ("UNKNOWN / UNAVAILABLE".into(), "rm-warn"),
