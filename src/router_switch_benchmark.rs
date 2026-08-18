@@ -597,19 +597,50 @@ fn library_identity(
     model: &crate::router::RouterModel,
     store: &ModelStore,
 ) -> Result<(String, String), RouterSwitchBenchmarkError> {
-    let model_id = model.library_link.model_id.clone().ok_or_else(|| {
-        RouterSwitchBenchmarkError::ModelIdentityUnproven {
-            model: model.id.clone(),
+    if let Some(model_id) = model.library_link.model_id.as_ref() {
+        let record = store
+            .get_model(model_id)
+            .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?
+            .ok_or_else(|| RouterSwitchBenchmarkError::LibraryModelMissing {
+                model: model.id.clone(),
+                model_id: model_id.clone(),
+            })?;
+        return Ok((model_id.clone(), record.sha256));
+    }
+
+    let records = store
+        .list_model_records()
+        .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?;
+    let mut candidates = Vec::new();
+    for record in records {
+        let exact_path = model
+            .path
+            .as_ref()
+            .is_some_and(|path| path == &record.model.path);
+        let exact_sha = model
+            .sha256
+            .as_deref()
+            .is_some_and(|sha| sha.eq_ignore_ascii_case(&record.model.sha256));
+        let path_text = record.model.path.to_string_lossy();
+        let exact_argv = model
+            .status
+            .args
+            .iter()
+            .any(|arg| arg == path_text.as_ref());
+        if exact_path || exact_sha || exact_argv {
+            candidates.push(record.model);
         }
-    })?;
-    let record = store
-        .get_model(&model_id)
-        .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?
-        .ok_or_else(|| RouterSwitchBenchmarkError::LibraryModelMissing {
+    }
+
+    match candidates.len() {
+        1 => {
+            let record = candidates.remove(0);
+            Ok((record.id, record.sha256))
+        }
+        _ => Err(RouterSwitchBenchmarkError::ModelIdentityUnproven {
             model: model.id.clone(),
-            model_id: model_id.clone(),
-        })?;
-    Ok((model_id, record.sha256))
+        }),
+    }
 }
 
 fn establish_baseline(
