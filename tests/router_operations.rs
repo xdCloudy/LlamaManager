@@ -412,10 +412,7 @@ fn failed_target_load_is_explicit_and_registry_evidence_is_retained() {
         .unwrap_err();
     server.join().unwrap();
 
-    assert!(matches!(
-        error,
-        RouterOperationError::Reconciliation { .. }
-    ));
+    assert!(matches!(error, RouterOperationError::Reconciliation { .. }));
     match controller.state() {
         RouterOperationState::Failed(failure) => {
             let registry = failure
