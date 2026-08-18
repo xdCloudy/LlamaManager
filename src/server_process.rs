@@ -605,12 +605,7 @@ mod tests {
         supervisor
             .start_process(pwsh_spec(script, environment))
             .unwrap();
-        wait_for_file(&pid_file, Duration::from_secs(5));
-        let grandchild_pid: u32 = fs::read_to_string(&pid_file)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let grandchild_pid = wait_for_pid_file(&pid_file, Duration::from_secs(5));
         assert!(windows_process_is_alive(grandchild_pid));
 
         supervisor.process_mut().unwrap().force_kill().unwrap();
@@ -663,12 +658,21 @@ mod tests {
         }
     }
 
-    fn wait_for_file(path: &Path, timeout: Duration) {
+    fn wait_for_pid_file(path: &Path, timeout: Duration) -> u32 {
         let deadline = std::time::Instant::now() + timeout;
-        while !path.is_file() && std::time::Instant::now() < deadline {
+        loop {
+            if let Ok(contents) = fs::read_to_string(path)
+                && let Ok(pid) = contents.trim().parse::<u32>()
+            {
+                return pid;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected parseable PID fixture file {}",
+                path.display()
+            );
             thread::sleep(Duration::from_millis(20));
         }
-        assert!(path.is_file(), "expected fixture file {}", path.display());
     }
 
     fn windows_process_is_alive(pid: u32) -> bool {
