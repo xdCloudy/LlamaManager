@@ -31,6 +31,14 @@ pub enum LlamaManagerError {
         stderr: String,
     },
 
+    #[error("benchmark was interrupted ({program}) with exit code {code:?}")]
+    BenchmarkInterrupted {
+        program: String,
+        code: Option<i32>,
+        stdout: String,
+        stderr: String,
+    },
+
     #[error("GGUF parse error: {0}")]
     Gguf(String),
 
