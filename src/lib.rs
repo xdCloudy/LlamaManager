@@ -5,6 +5,7 @@ pub mod compatibility;
 pub mod config_write;
 pub mod error;
 pub mod gguf;
+pub mod gpu_telemetry;
 pub mod hardware_telemetry;
 pub mod inference_telemetry;
 pub mod llama;
