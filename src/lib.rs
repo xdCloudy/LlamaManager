@@ -1,6 +1,7 @@
 pub mod app;
 pub mod benchmark;
 pub mod compatibility;
+pub mod config_write;
 pub mod error;
 pub mod gguf;
 pub mod llama;
