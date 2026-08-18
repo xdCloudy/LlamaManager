@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -229,7 +229,9 @@ fn measures_real_telemetry_overhead_idle_and_under_inference() {
     let idle = run_monitor_phase(OverheadPhase::Idle, duration, budget);
 
     let stop = Arc::new(AtomicBool::new(false));
+    let completed = Arc::new(AtomicUsize::new(0));
     let worker_stop = Arc::clone(&stop);
+    let worker_completed = Arc::clone(&completed);
     let worker_installation = installation.clone();
     let worker_model = model.clone();
     let benchmark_worker = thread::spawn(move || -> Result<usize, String> {
@@ -241,6 +243,7 @@ fn measures_real_telemetry_overhead_idle_and_under_inference() {
                 return Err("active inference benchmark produced zero samples".to_owned());
             }
             completed += 1;
+            worker_completed.store(completed, Ordering::Release);
             if worker_stop.load(Ordering::Acquire) {
                 return Ok(completed);
             }
@@ -248,11 +251,18 @@ fn measures_real_telemetry_overhead_idle_and_under_inference() {
     });
 
     let active_inference = run_monitor_phase(OverheadPhase::ActiveInference, duration, budget);
+    // Snapshot completions before stopping or joining the worker. A benchmark that only finishes
+    // after the measurement window cannot be used to prove inference overlapped the active phase.
+    let completed_benchmark_runs = completed.load(Ordering::Acquire);
     stop.store(true, Ordering::Release);
-    let completed_benchmark_runs = benchmark_worker
+    let worker_total_benchmark_runs = benchmark_worker
         .join()
         .expect("active inference benchmark worker panicked")
         .unwrap();
+    assert!(
+        worker_total_benchmark_runs >= completed_benchmark_runs,
+        "benchmark completion counter regressed during worker shutdown"
+    );
 
     let evidence = RealOverheadEvidence {
         schema: "llamamanager.telemetry-overhead.v1",
@@ -296,7 +306,7 @@ fn measures_real_telemetry_overhead_idle_and_under_inference() {
 
     assert!(
         evidence.completed_benchmark_runs > 0,
-        "active inference phase must complete at least one real llama-bench run"
+        "active inference phase must complete at least one real llama-bench run during the measurement window"
     );
     assert!(
         evidence.idle.assessment.within_budget,
