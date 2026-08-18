@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    # Trigger after the workflow exists so branch-push execution is unambiguous.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           $path = 'src/gpu_telemetry.rs'
-          $text = Get-Content -LiteralPath $path -Raw
+          $text = (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n")
 
           $oldCollector = @'
         for backend_adapter in backend_snapshot.adapters {
@@ -139,38 +138,14 @@ jobs:
             result.adapters[0].gpu_utilization_percent.live_value(),
             Some(&25)
         );
-        assert_eq!(
-            result.adapters[0].gpu_utilization_percent.unit,
-            GpuTelemetryUnit::Percent
-        );
-        assert_eq!(
-            result.adapters[0].memory_utilization_percent.unit,
-            GpuTelemetryUnit::Percent
-        );
-        assert_eq!(
-            result.adapters[0].memory_used_bytes.unit,
-            GpuTelemetryUnit::Bytes
-        );
-        assert_eq!(
-            result.adapters[0].memory_total_bytes.unit,
-            GpuTelemetryUnit::Bytes
-        );
-        assert_eq!(
-            result.adapters[0].temperature_celsius.unit,
-            GpuTelemetryUnit::Celsius
-        );
-        assert_eq!(
-            result.adapters[0].graphics_clock_mhz.unit,
-            GpuTelemetryUnit::Megahertz
-        );
-        assert_eq!(
-            result.adapters[0].memory_clock_mhz.unit,
-            GpuTelemetryUnit::Megahertz
-        );
-        assert_eq!(
-            result.adapters[0].power_milliwatts.unit,
-            GpuTelemetryUnit::Milliwatts
-        );
+        assert_eq!(result.adapters[0].gpu_utilization_percent.unit, GpuTelemetryUnit::Percent);
+        assert_eq!(result.adapters[0].memory_utilization_percent.unit, GpuTelemetryUnit::Percent);
+        assert_eq!(result.adapters[0].memory_used_bytes.unit, GpuTelemetryUnit::Bytes);
+        assert_eq!(result.adapters[0].memory_total_bytes.unit, GpuTelemetryUnit::Bytes);
+        assert_eq!(result.adapters[0].temperature_celsius.unit, GpuTelemetryUnit::Celsius);
+        assert_eq!(result.adapters[0].graphics_clock_mhz.unit, GpuTelemetryUnit::Megahertz);
+        assert_eq!(result.adapters[0].memory_clock_mhz.unit, GpuTelemetryUnit::Megahertz);
+        assert_eq!(result.adapters[0].power_milliwatts.unit, GpuTelemetryUnit::Milliwatts);
         assert!(result.adapters[0].gpu_utilization_percent.live_value() <= Some(&100));
         assert!(result.adapters[0].memory_utilization_percent.live_value() <= Some(&100));
         assert!(result.adapters[0].memory_used_bytes.live_value()
@@ -179,8 +154,9 @@ jobs:
           if (-not $text.Contains($unitAnchor)) { throw 'unit test anchor not found' }
           $text = $text.Replace($unitAnchor, $unitTests)
 
-          Set-Content -LiteralPath $path -Value $text -Encoding utf8 -NoNewline
+          [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
           cargo fmt --all
+          cargo check --all-targets
 
       - name: Commit patch
         shell: pwsh
