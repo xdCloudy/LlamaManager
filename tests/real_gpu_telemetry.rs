@@ -20,9 +20,9 @@ fn validates_real_nvidia_gpu_telemetry() {
     let mut provider = NvidiaGpuTelemetryProvider::new();
     let snapshot = provider.sample();
 
-    let reported_count = match snapshot.provider_adapter_count {
-        TelemetryState::Live { value } => value,
-        ref state => panic!("NVML provider did not become live on the NVIDIA host: {state:?}"),
+    let reported_count = match &snapshot.provider_adapter_count {
+        TelemetryState::Live { value } => *value,
+        state => panic!("NVML provider did not become live on the NVIDIA host: {state:?}"),
     };
     assert!(reported_count > 0, "NVML reported zero NVIDIA adapters");
     assert!(
