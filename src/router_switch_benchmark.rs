@@ -7,7 +7,7 @@ use std::{
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -76,7 +76,7 @@ pub struct RouterSwitchPhaseTimings {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RouterSwitchLeg {
     pub source_model: String,
     pub target_model: String,
@@ -96,7 +96,7 @@ pub enum RouterSwitchBenchmarkPhase {
     Recovery,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RouterSwitchRecoveryEvidence {
     pub attempted: bool,
     pub recovered: bool,
@@ -115,7 +115,7 @@ pub enum RouterSwitchBenchmarkOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RouterSwitchBenchmarkRun {
     pub id: String,
     pub envelope: RouterSwitchBenchmarkEnvelope,
@@ -276,7 +276,7 @@ impl RouterSwitchBenchmarkStore {
                     run.id,
                     envelope_json,
                     run_json,
-                    i64::from(run.succeeded()),
+                    (if run.succeeded() { 1_i64 } else { 0_i64 }),
                     run.started_at_unix_ms.to_string(),
                     run.finished_at_unix_ms.to_string(),
                 ],
@@ -323,8 +323,8 @@ impl RouterSwitchBenchmarkStore {
             .query_map([envelope_json], |row| row.get::<_, String>(0))
             .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?;
         rows.map(|row| {
-            let json = row
-                .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?;
+            let json =
+                row.map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))?;
             serde_json::from_str(&json)
                 .map_err(|error| RouterSwitchBenchmarkError::Persistence(error.to_string()))
         })
@@ -409,13 +409,7 @@ pub fn run_switch_round_trip(
         config,
         &mut loaded_counts,
     ) {
-        let recovery = recover_a(
-            &controller,
-            installation,
-            endpoint,
-            model_store,
-            config,
-        );
+        let recovery = recover_a(&controller, installation, endpoint, model_store, config);
         return RouterSwitchBenchmarkRun {
             id,
             envelope,
@@ -447,13 +441,7 @@ pub fn run_switch_round_trip(
         ) {
             Ok(leg) => legs.push(leg),
             Err((phase, message)) => {
-                let recovery = recover_a(
-                    &controller,
-                    installation,
-                    endpoint,
-                    model_store,
-                    config,
-                );
+                let recovery = recover_a(&controller, installation, endpoint, model_store, config);
                 return RouterSwitchBenchmarkRun {
                     id,
                     envelope,
@@ -495,7 +483,9 @@ fn failed_without_envelope(
         envelope: RouterSwitchBenchmarkEnvelope {
             schema_version: SWITCH_BENCHMARK_SCHEMA_VERSION,
             installation_id: installation.id.clone(),
-            server_sha256: server.map(|server| server.sha256.clone()).unwrap_or_default(),
+            server_sha256: server
+                .map(|server| server.sha256.clone())
+                .unwrap_or_default(),
             server_version: server.and_then(|server| {
                 (!server.version_output.trim().is_empty())
                     .then(|| server.version_output.trim().to_string())
@@ -526,8 +516,10 @@ fn prepare_envelope(
     endpoint: &ServerEndpoint,
     model_store: &ModelStore,
     config: &RouterSwitchBenchmarkConfig,
-) -> Result<(RouterSwitchBenchmarkEnvelope, ActiveRequestEvictionExercise), RouterSwitchBenchmarkError>
-{
+) -> Result<
+    (RouterSwitchBenchmarkEnvelope, ActiveRequestEvictionExercise),
+    RouterSwitchBenchmarkError,
+> {
     if config.model_a == config.model_b {
         return Err(RouterSwitchBenchmarkError::SameModel);
     }
@@ -535,13 +527,9 @@ fn prepare_envelope(
         .server
         .as_ref()
         .ok_or(RouterSwitchBenchmarkError::MissingServerEvidence)?;
-    let registry = discover_router_registry(
-        installation,
-        endpoint,
-        Some(model_store),
-        config.timeout,
-    )
-    .map_err(|error| RouterSwitchBenchmarkError::Discovery(error.to_string()))?;
+    let registry =
+        discover_router_registry(installation, endpoint, Some(model_store), config.timeout)
+            .map_err(|error| RouterSwitchBenchmarkError::Discovery(error.to_string()))?;
     let a = registry
         .models
         .iter()
@@ -566,9 +554,10 @@ fn prepare_envelope(
         config.timeout,
     ) {
         Ok(snapshot) => {
-            let observed = snapshot.models.iter().any(|model| {
-                model.active_requests.availability == EvidenceAvailability::Observed
-            });
+            let observed = snapshot
+                .models
+                .iter()
+                .any(|model| model.active_requests.availability == EvidenceAvailability::Observed);
             if observed {
                 ActiveRequestEvictionExercise::EvidenceAvailableNotExercised {
                     reason: "selected runtime exposes active-request evidence; the benchmark records it but does not manufacture concurrent traffic during timing samples".into(),
@@ -679,12 +668,7 @@ fn run_leg(
             config.timeout,
             &cancellation,
         )
-        .map_err(|error| {
-            (
-                RouterSwitchBenchmarkPhase::UnloadOrEvict,
-                error.to_string(),
-            )
-        })?;
+        .map_err(|error| (RouterSwitchBenchmarkPhase::UnloadOrEvict, error.to_string()))?;
     let unload_or_evict_ms = unload_started.elapsed().as_millis();
 
     let prior_loads = loaded_counts.get(target).copied().unwrap_or(0);
@@ -714,13 +698,9 @@ fn run_leg(
     *loaded_counts.entry(target.to_string()).or_default() += 1;
 
     let readiness_started = Instant::now();
-    let registry = discover_router_registry(
-        installation,
-        endpoint,
-        Some(model_store),
-        config.timeout,
-    )
-    .map_err(|error| (RouterSwitchBenchmarkPhase::Readiness, error.to_string()))?;
+    let registry =
+        discover_router_registry(installation, endpoint, Some(model_store), config.timeout)
+            .map_err(|error| (RouterSwitchBenchmarkPhase::Readiness, error.to_string()))?;
     let readiness_confirmation_ms = readiness_started.elapsed().as_millis();
     let target_state = registry
         .models
@@ -742,13 +722,9 @@ fn run_leg(
         ));
     }
 
-    let first_token_ms = measure_first_token(
-        endpoint,
-        target,
-        &config.first_token_prompt,
-        config.timeout,
-    )
-    .map_err(|error| (RouterSwitchBenchmarkPhase::FirstToken, error.to_string()))?;
+    let first_token_ms =
+        measure_first_token(endpoint, target, &config.first_token_prompt, config.timeout)
+            .map_err(|error| (RouterSwitchBenchmarkPhase::FirstToken, error.to_string()))?;
 
     Ok(RouterSwitchLeg {
         source_model: source.into(),
@@ -1022,7 +998,10 @@ mod tests {
         .unwrap()
     }
 
-    fn successful_run(id: &str, envelope: RouterSwitchBenchmarkEnvelope) -> RouterSwitchBenchmarkRun {
+    fn successful_run(
+        id: &str,
+        envelope: RouterSwitchBenchmarkEnvelope,
+    ) -> RouterSwitchBenchmarkRun {
         let leg = |source: &str, target: &str, first_token: u128| RouterSwitchLeg {
             source_model: source.into(),
             target_model: target.into(),
