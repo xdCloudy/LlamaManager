@@ -376,13 +376,13 @@ impl TimeSeries {
 
     pub fn push(&mut self, sample: TimeSeriesSample) -> Result<(), HistoryError> {
         self.validate_source(&sample)?;
-        if let Some(previous) = self.samples.back() {
-            if sample.timestamp_unix_ms < previous.timestamp_unix_ms {
-                return Err(HistoryError::OutOfOrderSample {
-                    previous: previous.timestamp_unix_ms,
-                    incoming: sample.timestamp_unix_ms,
-                });
-            }
+        if let Some(previous) = self.samples.back()
+            && sample.timestamp_unix_ms < previous.timestamp_unix_ms
+        {
+            return Err(HistoryError::OutOfOrderSample {
+                previous: previous.timestamp_unix_ms,
+                incoming: sample.timestamp_unix_ms,
+            });
         }
 
         let newest = sample.timestamp_unix_ms;
@@ -745,7 +745,7 @@ impl ChartProjection {
         let timeline_end = samples.back().map(|sample| sample.timestamp_unix_ms);
         let values: Vec<f64> = samples
             .iter()
-            .filter_map(|sample| sample.state.render_class().and_then(|_| sample.value))
+            .filter_map(|sample| sample.state.render_class().and(sample.value))
             .collect();
 
         let (y_min, y_max) = if values.is_empty() {
@@ -776,19 +776,18 @@ impl ChartProjection {
                 Some(class) if sample.value.is_some() => {
                     if let (Some(previous), Some(limit)) =
                         (previous_renderable_timestamp, options.missing_gap_after_ms)
+                        && sample.timestamp_unix_ms.saturating_sub(previous) > limit
                     {
-                        if sample.timestamp_unix_ms.saturating_sub(previous) > limit {
-                            flush_segment(&mut current, &mut segments, options.width_px);
-                            gaps.push(project_gap(
-                                ChartGapKind::MissingSamples,
-                                previous,
-                                sample.timestamp_unix_ms,
-                                "sample interval exceeded chart gap threshold",
-                                timeline_start,
-                                timeline_end,
-                                options.width_px,
-                            ));
-                        }
+                        flush_segment(&mut current, &mut segments, options.width_px);
+                        gaps.push(project_gap(
+                            ChartGapKind::MissingSamples,
+                            previous,
+                            sample.timestamp_unix_ms,
+                            "sample interval exceeded chart gap threshold",
+                            timeline_start,
+                            timeline_end,
+                            options.width_px,
+                        ));
                     }
 
                     if current.as_ref().is_some_and(|(state, _)| *state != class) {
@@ -986,13 +985,13 @@ fn flush_segment(
     segments: &mut Vec<ChartSegment>,
     width_px: u32,
 ) {
-    if let Some((state, points)) = current.take() {
-        if !points.is_empty() {
-            segments.push(ChartSegment {
-                state: state.into(),
-                points: decimate_for_pixels(points, width_px),
-            });
-        }
+    if let Some((state, points)) = current.take()
+        && !points.is_empty()
+    {
+        segments.push(ChartSegment {
+            state: state.into(),
+            points: decimate_for_pixels(points, width_px),
+        });
     }
 }
 
