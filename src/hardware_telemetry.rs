@@ -494,8 +494,7 @@ fn cpu_usage_delta(previous: &[CpuTimes], current: &[CpuTimes]) -> Result<CpuUsa
     }
 
     Ok(CpuUsageDelta {
-        total_percent: ((aggregate_busy as f64 / aggregate_total as f64) * 100.0)
-            .clamp(0.0, 100.0),
+        total_percent: ((aggregate_busy as f64 / aggregate_total as f64) * 100.0).clamp(0.0, 100.0),
         per_logical_processor_percent: per_cpu,
     })
 }
@@ -549,7 +548,9 @@ fn now_unix_ms() -> u64 {
 mod platform {
     use std::{ffi::c_void, io, mem, ptr};
 
-    use super::{CpuTimes, PlatformMemory, PlatformProcessError, ProcessMemoryMetrics, platform_memory};
+    use super::{
+        CpuTimes, PlatformMemory, PlatformProcessError, ProcessMemoryMetrics, platform_memory,
+    };
 
     const ALL_PROCESSOR_GROUPS: u16 = 0xFFFF;
     const RELATION_PROCESSOR_CORE: u32 = 0;
@@ -623,11 +624,7 @@ mod platform {
         fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
         fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> *mut c_void;
         fn CloseHandle(handle: *mut c_void) -> i32;
-        fn K32GetProcessMemoryInfo(
-            process: *mut c_void,
-            counters: *mut c_void,
-            cb: u32,
-        ) -> i32;
+        fn K32GetProcessMemoryInfo(process: *mut c_void, counters: *mut c_void, cb: u32) -> i32;
     }
 
     #[link(name = "ntdll")]
@@ -731,10 +728,8 @@ mod platform {
 
     pub(super) fn query_cpu_times() -> Result<Vec<CpuTimes>, String> {
         let logical_count = logical_processor_count()?;
-        let mut counters = vec![
-            SystemProcessorPerformanceInformation::default();
-            logical_count as usize
-        ];
+        let mut counters =
+            vec![SystemProcessorPerformanceInformation::default(); logical_count as usize];
         let byte_len = counters
             .len()
             .checked_mul(mem::size_of::<SystemProcessorPerformanceInformation>())
