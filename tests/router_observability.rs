@@ -11,8 +11,8 @@ use llamamanager::{
     llama::{LlamaInstallation, ToolEvidence},
     router::{RouterModelPhase, RouterRole},
     router_observability::{
-        EvidenceAvailability, RouterEvictionSafety, RouterSnapshotFreshness,
-        RouterObservabilityTracker, discover_router_observability,
+        EvidenceAvailability, RouterEvictionSafety, RouterObservabilityTracker,
+        RouterSnapshotFreshness, discover_router_observability,
     },
     server_readiness::ServerEndpoint,
 };
@@ -86,19 +86,19 @@ fn fake_router_exposes_active_request_lru_residency_and_alias_evidence() {
         ]}"#,
     );
 
-    let snapshot = discover_router_observability(
-        &installation(),
-        &endpoint,
-        None,
-        Duration::from_secs(2),
-    )
-    .unwrap();
+    let snapshot =
+        discover_router_observability(&installation(), &endpoint, None, Duration::from_secs(2))
+            .unwrap();
     handle.join().unwrap();
 
     assert_eq!(snapshot.registry.role, RouterRole::Router);
     assert_eq!(snapshot.models.len(), 2);
 
-    let alpha = snapshot.models.iter().find(|model| model.model.id == "alpha").unwrap();
+    let alpha = snapshot
+        .models
+        .iter()
+        .find(|model| model.model.id == "alpha")
+        .unwrap();
     assert_eq!(alpha.model.status.phase, RouterModelPhase::Loaded);
     assert_eq!(
         alpha.model.routing_targets,
@@ -114,7 +114,11 @@ fn fake_router_exposes_active_request_lru_residency_and_alias_evidence() {
         RouterEvictionSafety::Busy { active_requests: 2 }
     );
 
-    let beta = snapshot.models.iter().find(|model| model.model.id == "beta").unwrap();
+    let beta = snapshot
+        .models
+        .iter()
+        .find(|model| model.model.id == "beta")
+        .unwrap();
     assert_eq!(beta.model.status.phase, RouterModelPhase::Unloaded);
     assert_eq!(beta.residency.value, Some(false));
     assert_eq!(beta.evictable.value, Some(false));
@@ -130,38 +134,38 @@ fn fake_router_missing_observability_fields_remain_explicitly_unavailable() {
         r#"{"data":[{"id":"alpha","aliases":["a"],"status":{"value":"loading","args":[]}}]}"#,
     );
 
-    let snapshot = discover_router_observability(
-        &installation(),
-        &endpoint,
-        None,
-        Duration::from_secs(2),
-    )
-    .unwrap();
+    let snapshot =
+        discover_router_observability(&installation(), &endpoint, None, Duration::from_secs(2))
+            .unwrap();
     handle.join().unwrap();
 
     let alpha = &snapshot.models[0];
     assert_eq!(alpha.model.status.phase, RouterModelPhase::Loading);
-    assert_eq!(alpha.residency.availability, EvidenceAvailability::Unavailable);
+    assert_eq!(
+        alpha.residency.availability,
+        EvidenceAvailability::Unavailable
+    );
     assert_eq!(
         alpha.active_requests.availability,
         EvidenceAvailability::Unavailable
     );
-    assert_eq!(alpha.lru_rank.availability, EvidenceAvailability::Unavailable);
-    assert_eq!(alpha.evictable.availability, EvidenceAvailability::Unavailable);
+    assert_eq!(
+        alpha.lru_rank.availability,
+        EvidenceAvailability::Unavailable
+    );
+    assert_eq!(
+        alpha.evictable.availability,
+        EvidenceAvailability::Unavailable
+    );
 }
 
 #[test]
 fn tracker_retains_snapshot_but_marks_it_stale_after_disconnect() {
-    let (endpoint, handle) = start_fake_router(
-        r#"{"data":[{"id":"alpha","status":{"value":"loaded","args":[]}}]}"#,
-    );
-    let snapshot = discover_router_observability(
-        &installation(),
-        &endpoint,
-        None,
-        Duration::from_secs(2),
-    )
-    .unwrap();
+    let (endpoint, handle) =
+        start_fake_router(r#"{"data":[{"id":"alpha","status":{"value":"loaded","args":[]}}]}"#);
+    let snapshot =
+        discover_router_observability(&installation(), &endpoint, None, Duration::from_secs(2))
+            .unwrap();
     handle.join().unwrap();
 
     let mut tracker = RouterObservabilityTracker::default();
