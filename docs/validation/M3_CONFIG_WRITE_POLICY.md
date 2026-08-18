@@ -23,7 +23,8 @@ An existing external target is never mutated until:
 1. semantic validation reports zero errors;
 2. the target is confirmed to be a regular file;
 3. a recoverable same-directory backup has been created and flushed;
-4. the replacement contents have been fully written, flushed and synced to a same-directory temporary file.
+4. older LlamaManager backups have been pruned successfully to the configured retention bound;
+5. the replacement contents have been fully written, flushed and synced to a same-directory temporary file.
 
 Only then is the target replaced.
 
@@ -33,7 +34,7 @@ On Windows, existing targets are replaced with `ReplaceFileW`, using the prepare
 
 For a new file, normal same-directory rename is used. On non-Windows test/development hosts, `rename` is used for replacement.
 
-If backup creation, temporary-file write/flush, or replacement fails, the operation returns a typed `ConfigWriteError` with the failed action and path. It does not report success and best-effort cleans up the temporary file.
+If backup creation, retention cleanup, temporary-file write/flush, or replacement fails, the operation returns a typed `ConfigWriteError` with the failed action and path. It does not report success and best-effort cleans up the temporary file.
 
 ## Restore
 
@@ -43,10 +44,10 @@ This means a restore can recover the known-good backup without silently discardi
 
 ## Backup naming and retention
 
-Backups are stored beside the target using:
+Backups are stored beside the target using a collision-resistant name:
 
 ```text
-<filename>.llamamanager-backup-<unix-ms>-<counter>.bak
+<filename>.llamamanager-backup-<unix-nanoseconds>-<process-sequence>.bak
 ```
 
 The default retention is **5** backups per exact target filename. A caller may request another bound, but retention is clamped to at least **1** so an existing-file mutation never intentionally removes every recovery point.
@@ -63,8 +64,9 @@ Automated tests cover:
 - exact UTF-8 and CRLF/LF byte preservation;
 - external backup creation;
 - recovery from a deliberately bad edit;
-- bounded backup retention;
+- bounded target-scoped backup retention;
 - directory/non-file rejection;
-- Windows exclusive-lock failure without destructive mutation.
+- Windows exclusive-lock failure without destructive mutation;
+- Windows read-only target failure without fake success.
 
 Permission, read-only and sharing violations surface through the same actionable typed I/O error contract and remain failures rather than fallback success.
