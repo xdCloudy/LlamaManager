@@ -70,8 +70,6 @@ fn validates_real_windows_runtime_end_to_end() {
     assert!(!bench.help_output.trim().is_empty());
     assert!(!installation.capabilities.is_empty());
 
-    // Missing and non-executable installations must fail rather than being
-    // accepted as synthetic capability evidence.
     let negative_root = evidence_dir.join("negative runtime cases");
     fs::create_dir_all(&negative_root).unwrap();
     let empty_root = negative_root.join("empty");
@@ -90,10 +88,6 @@ fn validates_real_windows_runtime_end_to_end() {
     .unwrap();
     assert!(inspect_installation(&fake_root).is_err());
 
-    // #14: inspect two independently published GGUF artifacts from Unicode
-    // paths. A byte-identical copy under an ASCII path with spaces is reserved
-    // for #15 because the pinned upstream llama-bench currently mangles the
-    // Unicode model path at its own CLI boundary on Windows.
     let model = inspect_gguf(&model_path).unwrap();
     assert_eq!(model.sha256.to_ascii_lowercase(), expected_model_sha);
     assert_eq!(model.gguf_version, 3);
@@ -123,9 +117,6 @@ fn validates_real_windows_runtime_end_to_end() {
     fs::create_dir_all(&not_a_file).unwrap();
     assert!(inspect_gguf(&not_a_file).is_err());
 
-    // Record rather than conceal the pinned upstream runtime's Unicode-path
-    // behavior. If a future pinned release fixes it, this evidence naturally
-    // becomes "supported" instead of forcing a historical failure forever.
     let unicode_benchmark_evidence = match run_default_benchmark(&installation, &model) {
         Ok(run) => json!({
             "result": "supported",
@@ -152,9 +143,6 @@ fn validates_real_windows_runtime_end_to_end() {
     )
     .unwrap();
 
-    // #15: execute the actual upstream llama-bench binary through product code
-    // from a path containing spaces, retain stdout/stderr/argv/exit status, then
-    // persist and reload history.
     let run = run_default_benchmark(&installation, &bench_model).unwrap();
     assert_eq!(run.exit_code, Some(0));
     assert!(!run.arguments.is_empty());
@@ -178,9 +166,6 @@ fn validates_real_windows_runtime_end_to_end() {
     assert_eq!(persisted_model.id, bench_model.id);
     assert!(history.iter().any(|item| item.id == run.id));
 
-    // A real process failure must remain a typed failure. Pointing the same
-    // valid model identity at a missing file causes upstream llama-bench to
-    // return non-zero without requiring a fake executable.
     let mut missing_model = bench_model.clone();
     missing_model.path = evidence_dir.join("does not exist benchmark.gguf");
     assert!(matches!(
@@ -188,31 +173,25 @@ fn validates_real_windows_runtime_end_to_end() {
         Err(LlamaManagerError::ProcessFailed { .. })
     ));
 
-    // Cancellation is also exercised against the real upstream executable.
-    // The token is set before entry, but the product path intentionally spawns
-    // the child first and then observes cancellation while supervising it.
     let cancellation = BenchmarkCancellation::new();
     cancellation.cancel();
-    let interruption = match run_default_benchmark_cancellable(
-        &installation,
-        &bench_model,
-        &cancellation,
-    ) {
-        Err(LlamaManagerError::BenchmarkInterrupted {
-            program,
-            code,
-            stdout,
-            stderr,
-        }) => json!({
-            "program": program,
-            "exit_code": code,
-            "stdout": stdout,
-            "stderr": stderr,
-            "truthful_state": "interrupted"
-        }),
-        Ok(_) => panic!("cancelled real llama-bench must never become a successful run"),
-        Err(other) => panic!("expected BenchmarkInterrupted, got {other:?}"),
-    };
+    let interruption =
+        match run_default_benchmark_cancellable(&installation, &bench_model, &cancellation) {
+            Err(LlamaManagerError::BenchmarkInterrupted {
+                program,
+                code,
+                stdout,
+                stderr,
+            }) => json!({
+                "program": program,
+                "exit_code": code,
+                "stdout": stdout,
+                "stderr": stderr,
+                "truthful_state": "interrupted"
+            }),
+            Ok(_) => panic!("cancelled real llama-bench must never become a successful run"),
+            Err(other) => panic!("expected BenchmarkInterrupted, got {other:?}"),
+        };
 
     fs::write(
         evidence_dir.join("installation.json"),
