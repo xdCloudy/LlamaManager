@@ -1,0 +1,35 @@
+name: Agent M5 Switch Format
+
+on:
+  push:
+    branches:
+      - agent/m5-switch-benchmark
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/m5-switch-benchmark
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format and commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (git status --porcelain)) { exit 0 }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/router_switch_benchmark.rs tests/real_router_switch_benchmark.rs
+          git commit -m 'style(router): format switch benchmark validation'
+          git push origin HEAD:agent/m5-switch-benchmark
