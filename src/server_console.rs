@@ -41,7 +41,7 @@ pub fn hide_managed_console_window(pid: u32) -> Result<(), ServerConsoleControlE
 
 #[cfg(windows)]
 fn platform_request_graceful_console_interrupt(pid: u32) -> Result<(), ServerConsoleControlError> {
-    use std::{io, ptr, thread, time::Duration};
+    use std::{io, thread, time::Duration};
 
     type Bool = i32;
     type Dword = u32;
@@ -53,7 +53,6 @@ fn platform_request_graceful_console_interrupt(pid: u32) -> Result<(), ServerCon
     unsafe extern "system" {
         fn GetConsoleWindow() -> Hwnd;
         fn AttachConsole(process_id: Dword) -> Bool;
-        fn FreeConsole() -> Bool;
         fn SetConsoleCtrlHandler(handler: HandlerRoutine, add: Bool) -> Bool;
         fn GenerateConsoleCtrlEvent(ctrl_event: Dword, process_group_id: Dword) -> Bool;
     }
@@ -103,7 +102,6 @@ fn platform_request_graceful_console_interrupt(pid: u32) -> Result<(), ServerCon
     // Give the target console control dispatcher time to invoke llama-server's
     // registered handler before detaching this GUI process from that console.
     thread::sleep(Duration::from_millis(75));
-    let _ = ptr::null::<u8>(); // keeps this block free of platform-specific imports elsewhere
     Ok(())
 }
 
