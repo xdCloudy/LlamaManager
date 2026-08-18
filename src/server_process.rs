@@ -712,18 +712,24 @@ mod tests {
         };
         assert!(snapshot.retained_bytes <= 64 * 1024);
         assert!(snapshot.evicted_entries > 0);
-        assert!(snapshot
-            .entries
-            .iter()
-            .any(|entry| entry.stream == ServerLogStream::Stdout));
-        assert!(snapshot
-            .entries
-            .iter()
-            .any(|entry| entry.stream == ServerLogStream::Stderr));
-        assert!(snapshot
-            .entries
-            .iter()
-            .any(|entry| entry.text.contains("fatal: fixture crash")));
+        assert!(
+            snapshot
+                .entries
+                .iter()
+                .any(|entry| entry.stream == ServerLogStream::Stdout)
+        );
+        assert!(
+            snapshot
+                .entries
+                .iter()
+                .any(|entry| entry.stream == ServerLogStream::Stderr)
+        );
+        assert!(
+            snapshot
+                .entries
+                .iter()
+                .any(|entry| entry.text.contains("fatal: fixture crash"))
+        );
     }
 
     #[test]
