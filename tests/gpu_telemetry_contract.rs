@@ -28,18 +28,9 @@ fn gpu_provider_preserves_units_and_live_value_ranges() {
         );
         assert_eq!(adapter.memory_used_bytes.unit, GpuTelemetryUnit::Bytes);
         assert_eq!(adapter.memory_total_bytes.unit, GpuTelemetryUnit::Bytes);
-        assert_eq!(
-            adapter.temperature_celsius.unit,
-            GpuTelemetryUnit::Celsius
-        );
-        assert_eq!(
-            adapter.graphics_clock_mhz.unit,
-            GpuTelemetryUnit::Megahertz
-        );
-        assert_eq!(
-            adapter.memory_clock_mhz.unit,
-            GpuTelemetryUnit::Megahertz
-        );
+        assert_eq!(adapter.temperature_celsius.unit, GpuTelemetryUnit::Celsius);
+        assert_eq!(adapter.graphics_clock_mhz.unit, GpuTelemetryUnit::Megahertz);
+        assert_eq!(adapter.memory_clock_mhz.unit, GpuTelemetryUnit::Megahertz);
         assert_eq!(adapter.power_milliwatts.unit, GpuTelemetryUnit::Milliwatts);
 
         if let Some(value) = adapter.gpu_utilization_percent.live_value() {
@@ -58,7 +49,10 @@ fn gpu_provider_preserves_units_and_live_value_ranges() {
             );
         }
 
-        assert_eq!(adapter.gpu_utilization_percent.source.provider, "nvidia-nvml");
+        assert_eq!(
+            adapter.gpu_utilization_percent.source.provider,
+            "nvidia-nvml"
+        );
         assert_eq!(adapter.memory_used_bytes.source.provider, "nvidia-nvml");
         assert_eq!(adapter.temperature_celsius.source.provider, "nvidia-nvml");
         assert_eq!(adapter.graphics_clock_mhz.source.provider, "nvidia-nvml");
