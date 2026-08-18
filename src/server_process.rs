@@ -180,13 +180,13 @@ impl ManagedServerProcess {
         if let Some(evidence) = &self.exit_evidence {
             return Ok(evidence.clone());
         }
-        if let Some(status) = self
-            .child
-            .try_wait()
-            .map_err(|source| ProcessSupervisorError::Inspect {
-                pid: self.identity.pid,
-                source,
-            })?
+        if let Some(status) =
+            self.child
+                .try_wait()
+                .map_err(|source| ProcessSupervisorError::Inspect {
+                    pid: self.identity.pid,
+                    source,
+                })?
         {
             let evidence = exit_evidence(status, ProcessExitKind::Natural);
             self.exit_evidence = Some(evidence.clone());
@@ -253,7 +253,10 @@ impl ServerProcessSupervisor {
     }
 
     pub fn state(&mut self) -> Result<Option<ManagedProcessState>, ProcessSupervisorError> {
-        self.current.as_mut().map(ManagedServerProcess::state).transpose()
+        self.current
+            .as_mut()
+            .map(ManagedServerProcess::state)
+            .transpose()
     }
 
     pub fn process_mut(&mut self) -> Result<&mut ManagedServerProcess, ProcessSupervisorError> {
@@ -495,7 +498,12 @@ mod tests {
     fn pwsh_spec(script: &str, environment: BTreeMap<OsString, OsString>) -> ManagedProcessSpec {
         ManagedProcessSpec {
             executable: PathBuf::from("pwsh.exe"),
-            argv: vec!["-NoLogo".into(), "-NoProfile".into(), "-Command".into(), script.into()],
+            argv: vec![
+                "-NoLogo".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                script.into(),
+            ],
             cwd: std::env::current_dir().unwrap(),
             environment,
         }
@@ -544,7 +552,10 @@ mod tests {
     fn cooperative_grace_exit_timeout_and_force_kill_are_distinct() {
         let mut supervisor = ServerProcessSupervisor::new();
         supervisor
-            .start_process(pwsh_spec("Start-Sleep -Milliseconds 80; exit 0", BTreeMap::new()))
+            .start_process(pwsh_spec(
+                "Start-Sleep -Milliseconds 80; exit 0",
+                BTreeMap::new(),
+            ))
             .unwrap();
         let graceful = supervisor
             .process_mut()
@@ -584,7 +595,10 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let pid_file = temp.path().join("grandchild pid.txt");
         let mut environment = BTreeMap::new();
-        environment.insert("GRANDCHILD_PID_FILE".into(), pid_file.as_os_str().to_os_string());
+        environment.insert(
+            "GRANDCHILD_PID_FILE".into(),
+            pid_file.as_os_str().to_os_string(),
+        );
         let script = "$p = Start-Process -FilePath pwsh.exe -ArgumentList '-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 30' -PassThru; Set-Content -LiteralPath $env:GRANDCHILD_PID_FILE -Value $p.Id; Start-Sleep -Seconds 30";
 
         let mut supervisor = ServerProcessSupervisor::new();
@@ -592,7 +606,11 @@ mod tests {
             .start_process(pwsh_spec(script, environment))
             .unwrap();
         wait_for_file(&pid_file, Duration::from_secs(5));
-        let grandchild_pid: u32 = fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+        let grandchild_pid: u32 = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert!(windows_process_is_alive(grandchild_pid));
 
         supervisor.process_mut().unwrap().force_kill().unwrap();
@@ -633,10 +651,14 @@ mod tests {
     ) -> ProcessExitEvidence {
         let deadline = std::time::Instant::now() + timeout;
         loop {
-            if let Some(ManagedProcessState::Exited { evidence, .. }) = supervisor.state().unwrap() {
+            if let Some(ManagedProcessState::Exited { evidence, .. }) = supervisor.state().unwrap()
+            {
                 return evidence;
             }
-            assert!(std::time::Instant::now() < deadline, "process did not exit in time");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "process did not exit in time"
+            );
             thread::sleep(Duration::from_millis(20));
         }
     }
