@@ -16,8 +16,17 @@ use llamamanager::{
     benchmark::run_default_benchmark,
     gguf::inspect_gguf,
     gpu_telemetry::{GpuTelemetryProvider, NvidiaGpuTelemetryProvider},
-    hardware_telemetry::{HardwareTelemetryProvider, WindowsHardwareTelemetryProvider},
+    hardware_telemetry::{
+        HardwareTelemetryProvider, TelemetryReading, TelemetryState, WindowsHardwareTelemetryProvider,
+    },
     llama::inspect_installation,
+    telemetry_alerts::{
+        AlertComparator, AlertEngine, AlertRule, AlertSeverity, AlertThreshold,
+    },
+    telemetry_history::{
+        ChartOptions, HistoryPolicy, SampleSource, SeriesIdentity, SeriesKey, TimeSeriesSample,
+        TimeSeriesStore,
+    },
     telemetry_overhead::{
         OverheadBudget, OverheadPhase, PollTimingSample, TelemetryOverheadMeasurement,
         TelemetryOverheadRecorder, capture_current_process_resources,
@@ -55,6 +64,65 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
+fn cpu_series_key(reading: &TelemetryReading<f64>) -> SeriesKey {
+    SeriesKey::new(
+        "host.cpu.total_usage",
+        "percent",
+        reading.source.provider.clone(),
+        reading.source.api.clone(),
+        SeriesIdentity::new("host", "current-windows-host")
+            .with_display_name("overhead validation host"),
+    )
+}
+
+fn cpu_alert_rule(key: &SeriesKey) -> AlertRule {
+    AlertRule {
+        id: "overhead-harness-cpu-sanity".to_owned(),
+        metric: key.metric.clone(),
+        source_provider: key.source_provider.clone(),
+        source_api: key.source_api.clone(),
+        severity: AlertSeverity::Info,
+        comparator: AlertComparator::Above,
+        threshold: AlertThreshold {
+            trigger: 101.0,
+            clear: 100.0,
+        },
+        window_ms: 2_000,
+        debounce_ms: 1_000,
+        min_live_samples: 2,
+        valid_value_range: None,
+        reason: "synthetic non-firing CPU rule used only to include alert evaluation in overhead measurement"
+            .to_owned(),
+    }
+}
+
+fn cpu_history_sample(reading: &TelemetryReading<f64>, key: &SeriesKey) -> TimeSeriesSample {
+    let source = SampleSource::from_key(key);
+    match &reading.state {
+        TelemetryState::Live { value } => {
+            TimeSeriesSample::live(reading.sampled_at_unix_ms, *value, source).unwrap()
+        }
+        TelemetryState::Unavailable { reason } => {
+            TimeSeriesSample::unavailable(reading.sampled_at_unix_ms, source, reason.clone())
+        }
+        TelemetryState::Error { message } => {
+            TimeSeriesSample::error(reading.sampled_at_unix_ms, source, message.clone())
+        }
+        TelemetryState::Stale {
+            last_value,
+            last_observed_at_unix_ms,
+            reason,
+        } => TimeSeriesSample::stale(
+            reading.sampled_at_unix_ms,
+            *last_value,
+            source,
+            *last_observed_at_unix_ms,
+            reason.clone(),
+        )
+        .unwrap(),
+    }
+}
+
 fn run_monitor_phase(
     phase: OverheadPhase,
     duration: Duration,
@@ -62,6 +130,7 @@ fn run_monitor_phase(
 ) -> TelemetryOverheadMeasurement {
     let mut hardware = WindowsHardwareTelemetryProvider::new(POLL_CADENCE);
     let mut gpu = NvidiaGpuTelemetryProvider::new();
+    let mut pipeline: Option<(SeriesKey, TimeSeriesStore, AlertEngine)> = None;
     let start_resources = capture_current_process_resources().unwrap();
     let mut recorder =
         TelemetryOverheadRecorder::new(phase, POLL_CADENCE, budget, start_resources).unwrap();
@@ -72,8 +141,33 @@ fn run_monitor_phase(
         let poll_started = Instant::now();
         let hardware_snapshot = hardware.sample(None);
         let gpu_snapshot = gpu.sample();
+
+        let cpu_reading = &hardware_snapshot.cpu.total_usage_percent;
+        if pipeline.is_none() {
+            let key = cpu_series_key(cpu_reading);
+            pipeline = Some((
+                key.clone(),
+                TimeSeriesStore::new(HistoryPolicy::default()).unwrap(),
+                AlertEngine::new(vec![cpu_alert_rule(&key)]).unwrap(),
+            ));
+        }
+        let (key, history, alerts) = pipeline.as_mut().unwrap();
+        let cpu_sample = cpu_history_sample(cpu_reading, key);
+        history.push((*key).clone(), cpu_sample.clone()).unwrap();
+        black_box(alerts.observe(key, &cpu_sample).unwrap());
+        let chart = history
+            .series(key)
+            .unwrap()
+            .project(ChartOptions {
+                width_px: 800,
+                height_px: 220,
+                missing_gap_after_ms: Some(2_500),
+            })
+            .unwrap();
+
         black_box(&hardware_snapshot);
         black_box(&gpu_snapshot);
+        black_box(&chart);
         let poll_duration = poll_started.elapsed();
         let resources = capture_current_process_resources().unwrap();
         recorder
