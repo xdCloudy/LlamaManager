@@ -1,1 +1,0 @@
-PR #134 clean post-format validation trigger.
