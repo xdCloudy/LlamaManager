@@ -374,6 +374,13 @@ fn refresh_runtime(mut state: ControlSignal) {
 
 fn refresh_router(mut state: ControlSignal) {
     let snapshot = state.read().clone();
+    if snapshot.busy() {
+        state.write().notice = Some((
+            false,
+            "Another router operation or refresh is already running.".into(),
+        ));
+        return;
+    }
     let Some(installation) = snapshot.installation.clone() else {
         state.write().notice = Some((
             false,
