@@ -152,10 +152,7 @@ pub enum ServerReadinessError {
     },
 
     #[error("authentication failed during {phase:?} with HTTP {status_code}")]
-    AuthenticationRejected {
-        phase: ProbePhase,
-        status_code: u16,
-    },
+    AuthenticationRejected { phase: ProbePhase, status_code: u16 },
 
     #[error("health probe {path} was rejected with HTTP {status_code}")]
     HealthRejected { path: String, status_code: u16 },
@@ -308,12 +305,10 @@ fn probe_health(
             404 | 405 => unsupported.push(evidence),
             500..=599 => return Err(AttemptError::Retry(Some(evidence.status_code))),
             _ => {
-                return Err(AttemptError::Fatal(
-                    ServerReadinessError::HealthRejected {
-                        path: evidence.path,
-                        status_code: evidence.status_code,
-                    },
-                ));
+                return Err(AttemptError::Fatal(ServerReadinessError::HealthRejected {
+                    path: evidence.path,
+                    status_code: evidence.status_code,
+                }));
             }
         }
     }
@@ -413,9 +408,7 @@ fn sleep_with_deadline(deadline: Instant, backoff: Duration) {
     }
 }
 
-fn resolve_endpoint(
-    endpoint: &ServerEndpoint,
-) -> Result<Vec<SocketAddr>, ServerReadinessError> {
+fn resolve_endpoint(endpoint: &ServerEndpoint) -> Result<Vec<SocketAddr>, ServerReadinessError> {
     if endpoint.port == 0 {
         return Err(ServerReadinessError::InvalidPort);
     }
@@ -507,12 +500,7 @@ fn connect(
     })
 }
 
-fn build_http_request(
-    endpoint: &ServerEndpoint,
-    method: &str,
-    path: &str,
-    body: &str,
-) -> String {
+fn build_http_request(endpoint: &ServerEndpoint, method: &str, path: &str, body: &str) -> String {
     let mut request = format!(
         "{method} {path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n",
         endpoint.authority()
