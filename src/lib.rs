@@ -8,7 +8,6 @@ pub mod gguf;
 pub mod gpu_telemetry;
 pub mod hardware_telemetry;
 pub mod inference_telemetry;
-pub mod telemetry_history;
 pub mod llama;
 pub mod model_library;
 pub mod model_library_actions;
@@ -28,6 +27,7 @@ pub mod router;
 #[path = "router_management_ui.rs"]
 pub mod router_management;
 pub mod router_observability;
+pub mod telemetry_history;
 // Router operations deliberately expose their runtime/evidence dependencies at call sites;
 // keep the lint exceptions local to this module rather than weakening crate-wide Clippy.
 #[allow(

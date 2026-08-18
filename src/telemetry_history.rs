@@ -93,10 +93,7 @@ impl SeriesIdentity {
 
     pub fn disclosure(&self) -> String {
         match &self.display_name {
-            Some(display_name) => format!(
-                "{}:{} ({display_name})",
-                self.namespace, self.stable_id
-            ),
+            Some(display_name) => format!("{}:{} ({display_name})", self.namespace, self.stable_id),
             None => format!("{}:{}", self.namespace, self.stable_id),
         }
     }
@@ -208,11 +205,7 @@ impl TimeSeriesSample {
         )
     }
 
-    pub fn paused(
-        timestamp_unix_ms: u64,
-        source: SampleSource,
-        reason: impl Into<String>,
-    ) -> Self {
+    pub fn paused(timestamp_unix_ms: u64, source: SampleSource, reason: impl Into<String>) -> Self {
         Self::marker(
             timestamp_unix_ms,
             source,
@@ -238,11 +231,7 @@ impl TimeSeriesSample {
         )
     }
 
-    pub fn error(
-        timestamp_unix_ms: u64,
-        source: SampleSource,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn error(timestamp_unix_ms: u64, source: SampleSource, message: impl Into<String>) -> Self {
         Self::marker(
             timestamp_unix_ms,
             source,
@@ -253,11 +242,7 @@ impl TimeSeriesSample {
         )
     }
 
-    pub fn reset(
-        timestamp_unix_ms: u64,
-        source: SampleSource,
-        reason: impl Into<String>,
-    ) -> Self {
+    pub fn reset(timestamp_unix_ms: u64, source: SampleSource, reason: impl Into<String>) -> Self {
         Self::marker(
             timestamp_unix_ms,
             source,
@@ -471,9 +456,9 @@ impl TimeSeries {
                 .render_class()
                 .expect("render class checked above");
 
-            let same_bucket = bucket
-                .as_ref()
-                .is_some_and(|current| current.bucket_id == bucket_id && current.class == render_class);
+            let same_bucket = bucket.as_ref().is_some_and(|current| {
+                current.bucket_id == bucket_id && current.class == render_class
+            });
             if !same_bucket {
                 flush_bucket(&mut bucket, &mut output);
                 bucket = Some(DownsampleBucket::new(bucket_id, render_class, sample));
@@ -760,24 +745,20 @@ impl ChartProjection {
         let timeline_end = samples.back().map(|sample| sample.timestamp_unix_ms);
         let values: Vec<f64> = samples
             .iter()
-            .filter_map(|sample| {
-                sample
-                    .state
-                    .render_class()
-                    .and_then(|_| sample.value)
-            })
+            .filter_map(|sample| sample.state.render_class().and_then(|_| sample.value))
             .collect();
 
         let (y_min, y_max) = if values.is_empty() {
             (None, None)
         } else {
             let min = values.iter().copied().fold(f64::INFINITY, f64::min);
-            let max = values
-                .iter()
-                .copied()
-                .fold(f64::NEG_INFINITY, f64::max);
+            let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
             if (max - min).abs() < f64::EPSILON {
-                let padding = if min.abs() < 1.0 { 1.0 } else { min.abs() * 0.05 };
+                let padding = if min.abs() < 1.0 {
+                    1.0
+                } else {
+                    min.abs() * 0.05
+                };
                 (Some(min - padding), Some(max + padding))
             } else {
                 (Some(min), Some(max))
@@ -1166,10 +1147,7 @@ mod tests {
         }
 
         assert!(series.len() <= 32);
-        assert_eq!(
-            series.samples().back().unwrap().timestamp_unix_ms,
-            19_900
-        );
+        assert_eq!(series.samples().back().unwrap().timestamp_unix_ms, 19_900);
     }
 
     #[test]
@@ -1196,10 +1174,12 @@ mod tests {
                 .unwrap();
         }
 
-        assert!(series
-            .samples()
-            .iter()
-            .any(|sample| matches!(sample.state, TimeSeriesState::Disconnected { .. })));
+        assert!(
+            series
+                .samples()
+                .iter()
+                .any(|sample| matches!(sample.state, TimeSeriesState::Disconnected { .. }))
+        );
     }
 
     #[test]
@@ -1224,11 +1204,23 @@ mod tests {
         assert_eq!(store.len(), 2);
         assert_eq!(store.series_for_metric("gpu.utilization").count(), 2);
         assert_eq!(
-            store.series(&first).unwrap().samples().back().unwrap().value,
+            store
+                .series(&first)
+                .unwrap()
+                .samples()
+                .back()
+                .unwrap()
+                .value,
             Some(10.0)
         );
         assert_eq!(
-            store.series(&second).unwrap().samples().back().unwrap().value,
+            store
+                .series(&second)
+                .unwrap()
+                .samples()
+                .back()
+                .unwrap()
+                .value,
             Some(90.0)
         );
     }
@@ -1264,10 +1256,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(projection.segments.len(), 2);
-        assert!(projection
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == ChartGapKind::Disconnected));
+        assert!(
+            projection
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == ChartGapKind::Disconnected)
+        );
         assert_eq!(projection.segments[0].points.len(), 2);
         assert_eq!(projection.segments[1].points.len(), 1);
     }
@@ -1297,7 +1291,10 @@ mod tests {
         assert_eq!(projection.segments.len(), 2);
         assert_eq!(projection.segments[0].state, ChartSegmentState::Live);
         assert_eq!(projection.segments[1].state, ChartSegmentState::Stale);
-        assert_eq!(projection.presentation_state, SeriesPresentationState::Stale);
+        assert_eq!(
+            projection.presentation_state,
+            SeriesPresentationState::Stale
+        );
     }
 
     #[test]
@@ -1384,10 +1381,7 @@ mod tests {
             tracker.observe(250),
             CounterObservation::First { value: 250 }
         );
-        assert_eq!(
-            tracker.observe(3),
-            CounterObservation::Wrapped { delta: 9 }
-        );
+        assert_eq!(tracker.observe(3), CounterObservation::Wrapped { delta: 9 });
     }
 
     #[test]
@@ -1407,14 +1401,8 @@ mod tests {
             .unwrap();
         series
             .push(
-                TimeSeriesSample::stale(
-                    3_000,
-                    Some(10.0),
-                    source,
-                    Some(1_000),
-                    "waiting & stale",
-                )
-                .unwrap(),
+                TimeSeriesSample::stale(3_000, Some(10.0), source, Some(1_000), "waiting & stale")
+                    .unwrap(),
             )
             .unwrap();
 
