@@ -21,5 +21,6 @@ pub mod paths;
 pub mod persistence;
 pub mod profile_generator;
 pub mod server_command;
+pub mod server_logs;
 pub mod server_process;
 pub mod server_readiness;
