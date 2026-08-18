@@ -2,6 +2,59 @@
 
 This log records verified implementation state, not roadmap aspiration.
 
+## 2026-08-18 — M3 C5 models.ini runtime closure
+
+### Goal
+
+Promote Milestone 3 only after the parser/editor/write/generator stack had both closure-grade automation and a real rendered Windows acceptance pass.
+
+### Changed
+
+- Merged the lossless parser (#95), inheritance/provenance engine (#98), capability-aware validation/diff (#100), canonical structured/raw editor session (#108), safe managed/external write+backup+restore path (#105), evidence-backed generator (#110), and automated Windows runtime/recovery matrix (#111).
+- Merged PR #119 at `0059744ba69a49dfd892b8b72e1601053b6b02e4`, wiring the real CONFIG LAB workflow into LlamaWave.
+- Merged PR #120 at `fa63989656a364e8ea48c4c31e380bbf4bf1f90d`, adding a deterministic 4,000-comment Unicode/CRLF rendered stress fixture and explicit A–E acceptance checklist.
+- Merged PR #121 at `35dd7e1ad27263fc6d00d7b61c90fc31801f3ac2` after interactive QA found long PRE-APPLY EVIDENCE text could escape its panel; the fix constrains/wraps diagnostic/diff content and clarifies fixture names.
+
+### Interactive Windows verification
+
+The repository owner completed sections A–E of `scripts/prepare-m3-config-validation.ps1` in the real release UI.
+
+Verified:
+
+- the normal external fixture opened successfully;
+- `[agent 模型]` and `[*]` values showed inherited/override provenance;
+- a structured `threads` change produced a real BEFORE/AFTER diff;
+- malformed raw input showed a contextual RAW PARSE ERROR and disabled VALIDATE + SAVE;
+- fixing the raw error restored validation/diff;
+- external save created a backup and RESTORE BACKUP recovered the prior value;
+- managed config survived a full LlamaWave restart;
+- Unicode/space paths and CRLF/comment-heavy source remained usable;
+- the 4,000-comment long-file fixture remained responsive through RAW ↔ STRUCTURED switching and narrow layout;
+- no fake save/success state was observed.
+
+The user accepted the post-fix workflow as usable and explicitly chose not to block milestone completion on further cosmetic UI polish.
+
+### CI
+
+PR #121 CI run `32102022938` passed:
+
+```text
+PowerShell syntax                                      PASS
+cargo fmt --all -- --check                            PASS
+cargo check --all-targets                             PASS
+cargo test --all-targets                              PASS
+cargo clippy --all-targets --all-features -D warnings PASS
+cargo build --release                                 PASS
+desktop process smoke                                 PASS
+portable bundle assembly/upload                       PASS
+```
+
+### Result
+
+Issues #26 and #29 are closed with rendered/runtime evidence. `docs/evidence/M3_MODELS_INI_2026-08-18.md` records the closure evidence. M3 satisfies the applicable G1–G10 gates and is ready for #30 C5 promotion; residual cosmetic UI polish is deferred rather than treated as a correctness/runtime blocker.
+
+---
+
 ## 2026-08-18 — M2 C5 model-library runtime closure
 
 ### Goal
