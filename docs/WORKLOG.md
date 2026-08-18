@@ -2,6 +2,63 @@
 
 This log records verified implementation state, not roadmap aspiration.
 
+## 2026-08-18 — M2 C5 model-library runtime closure
+
+### Goal
+
+Complete the Milestone 2 evidence pass only after the real user-facing Model Library existed and its scan, failure, repair, compatibility, responsive-layout and restart paths had been exercised on interactive Windows.
+
+### Changed
+
+- Merged PR #117 at `a504eb6a1181dbcccf7b0a4191d5a0200607a463`, wiring the Model Library into LlamaWave.
+- Added recursive scan, manual add, content-derived identities, multiple known locations, explicit present/missing/unreadable states, relink, non-destructive library removal, compatibility evidence/reasons, projector association UI, persisted scan roots, and responsive/reduced-motion presentation.
+- Hardened the Dioxus model-library state for worker-thread GGUF/database operations and resolved strict Clippy findings before merge.
+- Retained automated acceptance for cancellation, reparse-point safety, locked/corrupt input isolation, dedupe, move/relink identity, compatibility staleness, projector behaviour, Unicode/spaces and persistence.
+
+### CI
+
+Final M2 implementation CI run `32098153891` passed:
+
+```text
+PowerShell syntax                                  PASS
+cargo fmt --all -- --check                        PASS
+cargo check --all-targets                         PASS
+cargo test --all-targets                          PASS
+cargo clippy --all-targets --all-features -D warnings PASS
+cargo build --release                             PASS
+desktop process smoke                             PASS
+portable bundle assembly/upload                   PASS
+```
+
+### Interactive Windows verification
+
+The repository owner exercised the real release UI with the selected llama.cpp runtime and a real hash-pinned GGUF.
+
+Verified:
+
+- manual model add works independently of a scan root;
+- recursive scan from `C:\LlamaManager\artifacts\M2 模型 library with spaces` works with spaces and Unicode;
+- the scan isolated one corrupt/error candidate without poisoning valid discovery;
+- byte-identical copies resolved to one content identity with multiple known locations;
+- the text model displayed `PRESENT` / `COMPATIBLE` with evidence-backed compatibility reasons;
+- after all present copies were moved/removed and paths refreshed, the identity changed to `MISSING` and `RELINK` surfaced;
+- relink to `C:\LlamaManager\artifacts\M2 moved 模型\stories moved.gguf` succeeded by matching content identity;
+- the UI returned to `PRESENT` while retaining old missing locations as evidence;
+- after closing and reopening LlamaWave, the relinked location/library/compatibility state persisted;
+- normal and narrow desktop layouts remained usable and readable.
+
+The complete evidence record and limitations are in `docs/evidence/M2_MODEL_LIBRARY_2026-08-18.md` and issue #21.
+
+### Limitations retained
+
+The interactive model was text-only, so no interactive mmproj claim is made; multimodal projector logic is covered by deterministic automated tests. No separate numeric large-library throughput bound is claimed. The prior upstream llama-bench Unicode-path limitation remains documented separately and does not prevent M2 scanning/inspection from handling Unicode paths.
+
+### Result
+
+M2 has closure-grade implementation, automation, real Windows runtime/UI evidence, persistence, failure handling, and truthful compatibility presentation. The remaining #22 work is the final documentation/regression/promotion gate before #2 closes and M3 is formally released.
+
+---
+
 ## 2026-08-18 — M1 C5 interactive GUI benchmark closure
 
 ### Goal

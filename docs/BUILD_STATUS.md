@@ -2,23 +2,33 @@
 
 ## Current tranche
 
-Milestone 1 is **C5 — Complete** with a verified real installation → model → benchmark path on Windows, including the final human-operated GUI interaction:
+Milestone 2 is **C5 — Complete** with a verified real Windows model-library and compatibility workflow:
 
 ```text
-select llama.cpp installation
-→ discover/hash relevant binaries
-→ capture capability/version evidence
-→ select GGUF
-→ inspect real GGUF metadata
-→ preview exact llama-bench invocation
-→ execute llama-bench from the GUI
-→ retain raw stdout/stderr/exit status
-→ parse benchmark samples
-→ persist run/history in SQLite
-→ present measured result/history in Dioxus
+select real llama.cpp installation
+→ manually add / recursively scan GGUFs
+→ derive stable model identity from file contents
+→ retain duplicate locations without duplicate identities
+→ inspect GGUF metadata
+→ evaluate installation ↔ model compatibility from evidence
+→ isolate corrupt/unreadable inputs
+→ detect moved/missing files
+→ relink by matching content identity
+→ persist library + compatibility state across restart
+→ present truthful states/reasons in Dioxus
 ```
 
-The repository also contains implementation work for later milestones, but milestone promotion remains evidence-gated by `docs/10_COMPLETION_MATRIX.md` and the GitHub dependency graph.
+Final user-facing M2 implementation: PR #117, merge commit `a504eb6a1181dbcccf7b0a4191d5a0200607a463`.
+
+Final source CI for the M2 implementation: run `32098153891`, which passed PowerShell syntax, formatting, all-target check, tests, strict Clippy, release build, desktop process smoke, portable bundle assembly, and artifact upload.
+
+The interactive Windows acceptance session then verified scan/add/dedupe/corrupt-input isolation/missing/relink/restart behaviour using paths containing spaces and Unicode. The full closure record is `docs/evidence/M2_MODEL_LIBRARY_2026-08-18.md` and issue #21.
+
+### M2 limitations retained explicitly
+
+- The interactive model was text-only and did not require an mmproj. Multimodal projector discovery/association/compatibility is covered by deterministic automated tests; no interactive multimodal claim is made.
+- No separate numeric large-library throughput bound is claimed. Blocking GGUF/database work is worker-threaded, scan cancellation is covered, and the exercised desktop workflow remained responsive.
+- The upstream b10472 `llama-bench` Unicode-model-path limitation documented under M1 does not affect M2 GGUF inspection/scanning; M2 exercised Unicode model-library paths successfully.
 
 ## Strict Windows CI
 
@@ -32,7 +42,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. The final source commit exercised by the M1 GUI acceptance session was `5a5ebb3fad92f7a25ad4f1f38822d03a48214e30`. Standard CI run `32094641702` passed the complete pipeline, and permanent real Windows runtime run `32094641715` passed the pinned llama.cpp/GGUF/benchmark checks plus real `llama-server` readiness and minimal inference validation.
+It also performs a desktop process smoke test and assembles/uploads the portable Windows bundle. M2's final implementation commit `a504eb6a1181dbcccf7b0a4191d5a0200607a463` passed the complete pipeline in run `32098153891`.
+
+For the prior M1 runtime tranche, source commit `5a5ebb3fad92f7a25ad4f1f38822d03a48214e30` passed standard CI run `32094641702`, and permanent real Windows runtime run `32094641715` passed the pinned llama.cpp/GGUF/benchmark checks plus real `llama-server` readiness and minimal inference validation.
 
 ## M1 real-runtime evidence — 2026-08-18
 
@@ -118,9 +130,9 @@ The run retained both binary and model SHA-256 identities. A real missing-model 
 
 ### Recorded limitation
 
-The pinned upstream `llama-bench` b10472 build cannot load the same model when its Windows path contains Unicode; its own CLI/runtime boundary renders `模型` as `??` and exits non-zero. LlamaManager's GGUF parser successfully reads both real models from Unicode paths, and the upstream benchmark limitation is retained explicitly in the evidence artifact rather than hidden by fallback behavior.
+The pinned upstream `llama-bench` b10472 build cannot load the same model when its Windows path contains Unicode; its own CLI/runtime boundary renders `模型` as `??` and exits non-zero. LlamaManager's GGUF parser successfully reads both real models from the Unicode path, and the upstream benchmark limitation is retained explicitly in the evidence artifact rather than hidden by fallback behavior.
 
-## Interactive UI evidence — C5 closure
+## M1 interactive UI evidence — C5 closure
 
 Issue #12 completed native Windows visual verification: the release UI was captured and manually inspected at 1280×720 and 1600×900 and reported clean.
 
@@ -130,7 +142,7 @@ The Benchmark view showed the exact real `llama-bench.exe` invocation, reported 
 
 The operator-captured evidence and integrity hashes are recorded in `docs/evidence/M1_GUI_BENCHMARK_2026-08-18.md`.
 
-This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is therefore **C5 — Complete**.
+This satisfies the previously outstanding M1 GUI-triggered benchmark requirement. M1 is **C5 — Complete**.
 
 ## Workflow cleanup
 
