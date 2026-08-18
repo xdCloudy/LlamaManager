@@ -2,6 +2,54 @@
 
 This log records verified implementation state, not roadmap aspiration.
 
+## 2026-08-18 — M5 C5 router + model switching closure
+
+### Goal
+
+Promote Milestone 5 only after router discovery, real mutation paths, truthful observability, switching benchmarks, restart reconciliation, failure recovery, strict automation, real Windows runtime evidence, and the final rendered Router Control visual gate were all complete.
+
+### Changed
+
+- Closed #38 after evidence-backed router discovery, capability probing and canonical model-registry reconciliation were verified.
+- Closed #39 after serialized real load/unload/reload/preload/switch operations and post-operation reconciliation were verified.
+- Closed #40 after residency/LRU, active-request and alias visibility were made evidence-backed, with unavailable state kept explicit rather than guessed.
+- Closed #41 after the real A → B → A switch benchmark, reproducibility envelope and failure/recovery behaviour were verified.
+- Merged PR #134 as `7626ca44d16f2b3b2b51e575fc2f09db19099b65`, integrating the Router Control UI and restart/reconnect reconciliation.
+- Source-review hardening on the final PR head invalidates stale endpoint/runtime authorization, serializes runtime refresh and live reconciliation, prevents duplicate reconciliation races, reports post-operation reconciliation failure truthfully, exposes Reload capability reasons visibly, and converts unexpected worker panic into recoverable retained failure evidence.
+
+### Automated and real-runtime verification
+
+Final implementation head `a79e6445c0d520a7f6517555860f1b13f73ae31a` passed normal CI #255 (`32143778017`) end-to-end:
+
+```text
+PowerShell syntax                                      PASS
+cargo fmt --all -- --check                            PASS
+cargo check --all-targets                             PASS
+cargo test --all-targets                              PASS
+cargo clippy --all-targets --all-features -D warnings PASS
+cargo build --release                                 PASS
+desktop process smoke                                 PASS
+portable bundle assembly/upload                       PASS
+```
+
+Real Windows Runtime Validation #43 (`32143777993`) also passed against pinned llama.cpp b10472 and published GGUFs, including real router discovery, load/unload/preload/switch operations, A → B → A switching, restart/reconnect reconciliation and evidence upload.
+
+The restart evidence records the preferred target as `Verified` before restart, `NeedsLiveReconciliation` after disconnect, and `NotReady / Unloaded` after the restarted router is actually rediscovered. No stale ready state survives reconnect.
+
+Pinned b10472 exposes no supported dynamic default-model mutation route, so LlamaManager records that capability as unsupported/N/A and never substitutes a fake startup-control path.
+
+### Interactive Windows verification
+
+The repository owner built the exact final PR head from source and inspected Router Control at normal and narrow desktop sizes on Windows on 2026-08-18.
+
+The rendered UI was reported good with no blocking overlap, clipping, unusable control, or other layout/UX defect. That completed #42's final human visual gate.
+
+### Result
+
+Issues #38–#42 are complete with implementation, automated, runtime, recovery and rendered-UI evidence. `docs/evidence/M5_ROUTER_SWITCHING_2026-08-18.md` records the C5 closure evidence. M5 satisfies G1–G10 and is ready for #43 promotion; once #43 and #5 close, M6/#44 is formally unblocked.
+
+---
+
 ## 2026-08-18 — M4 C5 managed llama-server lifecycle closure
 
 ### Goal

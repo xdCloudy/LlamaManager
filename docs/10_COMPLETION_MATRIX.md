@@ -53,7 +53,7 @@ Legend: `✅` satisfied, `🟡` implemented/partially evidenced but not closure-
 | **M2 Model library + compatibility** | #2 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M3 `models.ini`** | #3 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M4 Server lifecycle** | #4 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **M5 Router + switching** | #5 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **M5 Router + switching** | #5 | **C5** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **M6 Live telemetry** | #6 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M7 Benchmark laboratory** | #7 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **M8 Autotuner v1** | #8 | **C1** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -151,20 +151,22 @@ C5 requires:
 
 ## M5 — Router + model switching
 
+**Current state:** C5 — Complete. Final automated/runtime/interactive evidence: `docs/evidence/M5_ROUTER_SWITCHING_2026-08-18.md`.
+
 C5 requires:
 
-- [ ] Router availability and supported operations are discovered from real evidence.
-- [ ] Model registry reflects actual loaded/resident state.
-- [ ] Load, unload, reload, preload, and switch paths are verified where supported.
-- [ ] Startup model behaviour is verified after restart.
-- [ ] Residency/LRU state is visible and not guessed.
-- [ ] Active-request state is shown where available and unknown is explicit where unavailable.
-- [ ] A → B → A switching is verified with real compatible models.
-- [ ] Active-request eviction failure is handled without corrupting router state.
-- [ ] Stop timeout and force-kill behaviour are visible.
-- [ ] Aliases and routing targets are observable from the UI/diagnostics.
-- [ ] Switching benchmark records unload/load/readiness/first-token timings with reproducibility evidence.
-- [ ] Failure/recovery after a bad model load is verified.
+- [x] Router availability and supported operations are discovered from real evidence.
+- [x] Model registry reflects actual loaded/resident state.
+- [x] Load, unload, reload, preload, and switch paths are verified where supported.
+- [x] Startup model behaviour is verified after restart; dynamic default-model mutation is unsupported/N/A on pinned b10472, and preferred-target readiness is re-derived from live post-restart evidence.
+- [x] Residency/LRU state is visible and not guessed; unavailable evidence remains explicit.
+- [x] Active-request state is shown where available and unknown is explicit where unavailable.
+- [x] A → B → A switching is verified with real compatible models.
+- [x] Active-request eviction failure is handled without corrupting router state where evidence is available; pinned b10472 does not expose active-request evidence, so no unsupported active-request claim is invented.
+- [x] Stop timeout and force-kill behaviour remain visible through the verified managed-server lifecycle used by the router path.
+- [x] Aliases and routing targets are observable from the UI/diagnostics.
+- [x] Switching benchmark records unload/load/readiness/first-token timings with reproducibility evidence.
+- [x] Failure/recovery after a bad model load is verified.
 
 ## M6 — Live hardware and inference telemetry
 
