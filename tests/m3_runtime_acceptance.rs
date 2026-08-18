@@ -1,14 +1,27 @@
-use std::{collections::{BTreeMap, BTreeSet}, fs, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::PathBuf,
+};
 
 use llamamanager::{
-    compatibility::{ARCHITECTURE_REGISTRY_REVISION, CompatibilityResult, CompatibilityStatus, installation_fingerprint},
-    config_write::{ConfigWriteError, managed_models_ini_path, restore_backup, write_external_models_ini, write_managed_models_ini},
+    compatibility::{
+        ARCHITECTURE_REGISTRY_REVISION, CompatibilityResult, CompatibilityStatus,
+        installation_fingerprint,
+    },
+    config_write::{
+        ConfigWriteError, managed_models_ini_path, restore_backup, write_external_models_ini,
+        write_managed_models_ini,
+    },
     gguf::{MetadataValue, ModelInfo},
     llama::{LlamaInstallation, ToolEvidence},
     models_ini::ModelsIniDocument,
     models_ini_editor::{EditorMode, ModelsIniEditorSession},
     paths::{AppPaths, StorageMode},
-    profile_generator::{ProfileDestination, ProfileGenerationRequest, RecommendationBasis, RecommendedSetting, apply_generated_profile, generate_profile},
+    profile_generator::{
+        ProfileDestination, ProfileGenerationRequest, RecommendationBasis, RecommendedSetting,
+        apply_generated_profile, generate_profile,
+    },
 };
 
 fn installation() -> LlamaInstallation {
@@ -21,7 +34,8 @@ fn installation() -> LlamaInstallation {
             path: root.join("llama-server.exe"),
             sha256: "a".repeat(64),
             version_output: "b10472".into(),
-            help_output: "--model FILE --threads N --ctx-size N --batch-size N --ubatch-size N".into(),
+            help_output: "--model FILE --threads N --ctx-size N --batch-size N --ubatch-size N"
+                .into(),
             device_output: "CPU".into(),
         }),
         bench: None,
@@ -95,13 +109,8 @@ fn external_structured_edit_diff_save_reopen_preserves_crlf_comments_unknown_and
     let validation = editor.validation("模型 profile", Some(&runtime)).unwrap();
     assert!(validation.can_apply(), "{:?}", validation.issues);
 
-    let receipt = write_external_models_ini(
-        &target,
-        editor.canonical_source(),
-        &validation,
-        5,
-    )
-    .unwrap();
+    let receipt =
+        write_external_models_ini(&target, editor.canonical_source(), &validation, 5).unwrap();
     assert!(receipt.backup.as_ref().unwrap().is_file());
 
     let saved = fs::read(&target).unwrap();
@@ -115,8 +124,16 @@ fn external_structured_edit_diff_save_reopen_preserves_crlf_comments_unknown_and
         reopened.document().last_value("*", "future-option"),
         Some("preserve-me")
     );
-    assert!(reopened.canonical_source().contains("# keep this comment\r\n"));
-    assert!(reopened.canonical_source().contains("D:\\Models 外部\\evidence model.gguf"));
+    assert!(
+        reopened
+            .canonical_source()
+            .contains("# keep this comment\r\n")
+    );
+    assert!(
+        reopened
+            .canonical_source()
+            .contains("D:\\Models 外部\\evidence model.gguf")
+    );
 }
 
 #[test]
@@ -138,7 +155,10 @@ fn external_raw_edit_validation_save_and_reopen_use_same_canonical_document() {
 
     let reopened = ModelsIniEditorSession::load(fs::read_to_string(&target).unwrap()).unwrap();
     assert_eq!(reopened.document().last_value("*", "threads"), Some("6"));
-    assert_eq!(reopened.document().last_value("model", "ctx-size"), Some("8192"));
+    assert_eq!(
+        reopened.document().last_value("model", "ctx-size"),
+        Some("8192")
+    );
     assert_eq!(reopened.raw_draft(), reopened.canonical_source());
 }
 
@@ -151,23 +171,24 @@ fn invalid_raw_or_semantic_edit_cannot_damage_original_external_file() {
 
     let mut raw_editor = ModelsIniEditorSession::load(original).unwrap();
     raw_editor.switch_mode(EditorMode::Raw).unwrap();
-    assert!(raw_editor.apply_raw_edit("[*]\nthis is malformed\n").is_err());
-    assert!(raw_editor.validation("model", Some(&installation())).is_err());
+    assert!(
+        raw_editor
+            .apply_raw_edit("[*]\nthis is malformed\n")
+            .is_err()
+    );
+    assert!(
+        raw_editor
+            .validation("model", Some(&installation()))
+            .is_err()
+    );
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
 
-    let semantic = ModelsIniEditorSession::load(
-        "[*]\nthreads=0\n[model]\nmodel=model.gguf\n",
-    )
-    .unwrap();
+    let semantic =
+        ModelsIniEditorSession::load("[*]\nthreads=0\n[model]\nmodel=model.gguf\n").unwrap();
     let validation = semantic.validation("model", Some(&installation())).unwrap();
     assert!(!validation.can_apply());
-    let error = write_external_models_ini(
-        &target,
-        semantic.canonical_source(),
-        &validation,
-        5,
-    )
-    .unwrap_err();
+    let error = write_external_models_ini(&target, semantic.canonical_source(), &validation, 5)
+        .unwrap_err();
     assert!(matches!(error, ConfigWriteError::ValidationBlocked { .. }));
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
 }
@@ -179,18 +200,11 @@ fn backup_restore_recovers_deliberately_bad_external_write_and_preserves_bad_sta
     let original = "[*]\nthreads=4\n[model]\nmodel=model.gguf\n";
     fs::write(&target, original).unwrap();
 
-    let editor = ModelsIniEditorSession::load(
-        "[*]\nthreads=8\n[model]\nmodel=model.gguf\n",
-    )
-    .unwrap();
+    let editor =
+        ModelsIniEditorSession::load("[*]\nthreads=8\n[model]\nmodel=model.gguf\n").unwrap();
     let validation = editor.validation("model", Some(&installation())).unwrap();
-    let receipt = write_external_models_ini(
-        &target,
-        editor.canonical_source(),
-        &validation,
-        5,
-    )
-    .unwrap();
+    let receipt =
+        write_external_models_ini(&target, editor.canonical_source(), &validation, 5).unwrap();
     let original_backup = receipt.backup.unwrap();
 
     let deliberately_bad = "not valid models.ini\n";
@@ -210,10 +224,9 @@ fn managed_config_survives_reconstructed_app_paths_restart() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("portable state 外部 with spaces");
     let first_paths = AppPaths::from_root(StorageMode::Portable, root.clone()).unwrap();
-    let editor = ModelsIniEditorSession::load(
-        "[*]\nthreads=4\n[model]\nmodel=model.gguf\nctx-size=8192\n",
-    )
-    .unwrap();
+    let editor =
+        ModelsIniEditorSession::load("[*]\nthreads=4\n[model]\nmodel=model.gguf\nctx-size=8192\n")
+            .unwrap();
     let validation = editor.validation("model", Some(&installation())).unwrap();
     assert!(validation.can_apply());
     write_managed_models_ini(&first_paths, editor.canonical_source(), &validation).unwrap();
@@ -222,7 +235,10 @@ fn managed_config_survives_reconstructed_app_paths_restart() {
     let restarted_paths = AppPaths::from_root(StorageMode::Portable, root).unwrap();
     let managed = managed_models_ini_path(&restarted_paths);
     let reopened = ModelsIniEditorSession::load(fs::read_to_string(managed).unwrap()).unwrap();
-    assert_eq!(reopened.document().last_value("model", "ctx-size"), Some("8192"));
+    assert_eq!(
+        reopened.document().last_value("model", "ctx-size"),
+        Some("8192")
+    );
     assert_eq!(reopened.document().last_value("*", "threads"), Some("4"));
 }
 
@@ -268,7 +284,10 @@ fn generated_profile_write_and_reopen_has_no_semantic_drift() {
     let reopened = ModelsIniEditorSession::load(reopened_source.clone()).unwrap();
     let generated_document = ModelsIniDocument::parse(&generated.source).unwrap();
     let reopened_document = ModelsIniDocument::parse(&reopened_source).unwrap();
-    assert_eq!(generated_document.serialize(), reopened_document.serialize());
+    assert_eq!(
+        generated_document.serialize(),
+        reopened_document.serialize()
+    );
     assert_eq!(
         reopened.document().last_value("Generated 外部", "ctx-size"),
         Some("16384")
@@ -277,5 +296,9 @@ fn generated_profile_write_and_reopen_has_no_semantic_drift() {
         reopened.document().last_value("Generated 外部", "model"),
         Some(r"D:\Models 外部\evidence model.gguf")
     );
-    assert!(reopened.canonical_source().contains("# baseline comment\r\n"));
+    assert!(
+        reopened
+            .canonical_source()
+            .contains("# baseline comment\r\n")
+    );
 }
