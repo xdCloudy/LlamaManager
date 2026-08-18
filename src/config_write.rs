@@ -114,8 +114,8 @@ pub fn restore_backup(
     };
 
     let (temp, mut temp_file) = create_unique_sibling(target, "restore-tmp", ".tmp")?;
-    let mut source = File::open(backup)
-        .map_err(|error| io_error("open restore backup", backup, error))?;
+    let mut source =
+        File::open(backup).map_err(|error| io_error("open restore backup", backup, error))?;
     let copied = match io::copy(&mut source, &mut temp_file) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -194,8 +194,7 @@ fn validate_target_shape(target: &Path) -> ConfigWriteResult<()> {
 
 fn ensure_parent(target: &Path) -> ConfigWriteResult<()> {
     let parent = target_parent(target)?;
-    fs::create_dir_all(parent)
-        .map_err(|source| io_error("create target directory", parent, source))
+    fs::create_dir_all(parent).map_err(|source| io_error("create target directory", parent, source))
 }
 
 fn target_parent(target: &Path) -> ConfigWriteResult<&Path> {
@@ -221,11 +220,7 @@ fn create_backup(target: &Path) -> ConfigWriteResult<PathBuf> {
         let _ = fs::remove_file(&backup);
         return Err(io_error("copy configuration backup", target, error));
     }
-    if let Err(error) = sync_file(
-        &mut destination,
-        &backup,
-        "flush configuration backup",
-    ) {
+    if let Err(error) = sync_file(&mut destination, &backup, "flush configuration backup") {
         drop(destination);
         let _ = fs::remove_file(&backup);
         return Err(error);
