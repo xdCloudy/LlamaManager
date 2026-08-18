@@ -977,6 +977,9 @@ pub fn RouterManagementView() -> Element {
                         button { class: "rm-button primary", disabled: busy || snapshot.installation.is_none(), onclick: move |_| refresh_router(state), "RECONCILE LIVE STATE" }
                         button { class: "rm-button", disabled: !reload_ok, title: "{reload_reason}", onclick: move |_| run_action(state, RequestedAction::Reload, None, None), "RELOAD REGISTRY" }
                     }
+                    div { class: "rm-support",
+                        {support_row("RELOAD", reload_ok, &reload_reason)}
+                    }
                     div { class: "rm-runtime",
                         strong { "SELECTED LLAMA.CPP EVIDENCE\n" }
                         if let Some(installation) = snapshot.installation.as_ref() {
