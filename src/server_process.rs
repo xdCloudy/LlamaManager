@@ -312,6 +312,7 @@ impl ServerProcessSupervisor {
         }
     }
 
+    #[cfg(test)]
     fn start_process(
         &mut self,
         spec: ManagedProcessSpec,
