@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::{
     model_library_ui::ModelLibraryView, models_ini_ui::ModelsIniView,
-    server_ui::ServerLifecycleView,
+    router_observability::RouterObservabilityView, server_ui::ServerLifecycleView,
 };
 
 #[path = "app.rs"]
@@ -89,6 +89,7 @@ enum Surface {
     Lab,
     Models,
     Config,
+    Router,
     Server,
 }
 
@@ -106,6 +107,8 @@ pub fn App() -> Element {
             ModelLibraryView {}
         } else if current == Surface::Config {
             ModelsIniView {}
+        } else if current == Surface::Router {
+            RouterObservabilityView {}
         } else {
             ServerLifecycleView {}
         }
@@ -125,6 +128,11 @@ pub fn App() -> Element {
                 class: if current == Surface::Config { "active" } else { "" },
                 onclick: move |_| surface.set(Surface::Config),
                 "CONFIG LAB"
+            }
+            button {
+                class: if current == Surface::Router { "active" } else { "" },
+                onclick: move |_| surface.set(Surface::Router),
+                "ROUTER"
             }
             button {
                 class: if current == Surface::Server { "active" } else { "" },
