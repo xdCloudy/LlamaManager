@@ -157,24 +157,18 @@ fn f64_sample(
     key: &SeriesKey,
     reading: &TelemetryReading<f64>,
 ) -> Result<TimeSeriesSample, HistoryError> {
-    sample_from_state(
-        key,
-        reading.sampled_at_unix_ms,
-        &reading.state,
-        |value| *value,
-    )
+    sample_from_state(key, reading.sampled_at_unix_ms, &reading.state, |value| {
+        *value
+    })
 }
 
 fn u32_sample(
     key: &SeriesKey,
     reading: &GpuTelemetryReading<u32>,
 ) -> Result<TimeSeriesSample, HistoryError> {
-    sample_from_state(
-        key,
-        reading.sampled_at_unix_ms,
-        &reading.state,
-        |value| f64::from(*value),
-    )
+    sample_from_state(key, reading.sampled_at_unix_ms, &reading.state, |value| {
+        f64::from(*value)
+    })
 }
 
 fn sample_from_state<T>(
@@ -274,10 +268,7 @@ fn chart_card(title: String, projection: ChartProjection) -> Element {
     }
 }
 
-pub fn render_history_panel(
-    history: TelemetryHistorySnapshot,
-    error: Option<String>,
-) -> Element {
+pub fn render_history_panel(history: TelemetryHistorySnapshot, error: Option<String>) -> Element {
     rsx! {
         style { dangerous_inner_html: TELEMETRY_CHART_CSS }
         section { class: "tm-panel wide",
