@@ -95,7 +95,7 @@ pub fn probe_llama_cpp_streaming(
     let mut total_bytes = 0_usize;
     let mut headers_done = false;
     let mut status_code = None;
-    let mut body_pending = String::new();
+    let mut body_pending = Vec::new();
     let mut first_token_elapsed = None;
     let mut final_event = None;
     let mut event_count = 0_usize;
@@ -136,11 +136,11 @@ pub fn probe_llama_cpp_streaming(
                 });
             }
             status_code = Some(parsed_status);
-            body_pending.push_str(&String::from_utf8_lossy(&received[header_end + 4..]));
+            body_pending.extend_from_slice(&received[header_end + 4..]);
             received.clear();
             headers_done = true;
         } else {
-            body_pending.push_str(&String::from_utf8_lossy(&received));
+            body_pending.extend_from_slice(&received);
             received.clear();
         }
 
@@ -159,8 +159,12 @@ pub fn probe_llama_cpp_streaming(
     if !headers_done {
         return Err(StreamingInferenceProbeError::MissingHeaders);
     }
-    if final_event.is_none() && !body_pending.trim().is_empty() {
-        body_pending.push('\n');
+    if final_event.is_none()
+        && body_pending
+            .iter()
+            .any(|byte| !byte.is_ascii_whitespace())
+    {
+        body_pending.push(b'\n');
         consume_sse_lines(
             &mut body_pending,
             started,
@@ -276,14 +280,14 @@ fn build_request(endpoint: &ServerEndpoint) -> String {
 }
 
 fn consume_sse_lines(
-    pending: &mut String,
+    pending: &mut Vec<u8>,
     started: Instant,
     first_token_elapsed: &mut Option<Duration>,
     final_event: &mut Option<String>,
     event_count: &mut usize,
 ) {
-    while let Some(newline) = pending.find('\n') {
-        let line = pending[..newline].trim().to_owned();
+    while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
+        let line = String::from_utf8_lossy(&pending[..newline]).trim().to_owned();
         pending.drain(..=newline);
         let Some(data_position) = line.find("data: ") else {
             continue;
@@ -404,6 +408,32 @@ mod tests {
         (ServerEndpoint::loopback(port), rx)
     }
 
+    fn spawn_fragmented_unicode_sse_server() -> ServerEndpoint {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_http_request(&mut stream);
+            let body = concat!(
+                "data: {\"content\":\"O\"}\n\n",
+                "data: {\"content\":\"\",\"model\":\"mødel.gguf\",\"timings\":{\"prompt_per_second\":123.0,\"predicted_per_second\":45.0,\"prompt_n\":3,\"predicted_n\":2,\"cache_n\":0},\"generation_settings\":{\"speculative.types\":\"none\"}}\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let bytes = response.as_bytes();
+            let utf8_start = find_bytes(bytes, "ø".as_bytes()).unwrap();
+            let split = utf8_start + 1;
+            stream.write_all(&bytes[..split]).unwrap();
+            stream.flush().unwrap();
+            thread::sleep(Duration::from_millis(50));
+            stream.write_all(&bytes[split..]).unwrap();
+            stream.flush().unwrap();
+        });
+        ServerEndpoint::loopback(port)
+    }
+
     #[test]
     fn streaming_probe_returns_request_bound_metrics_and_auth_header() {
         let (mut endpoint, request_rx) = spawn_sse_server(200);
@@ -425,6 +455,16 @@ mod tests {
             evidence.snapshot.mtp_generated_tokens.state,
             TelemetryState::Unavailable { .. }
         ));
+    }
+
+    #[test]
+    fn streaming_probe_preserves_utf8_split_across_tcp_reads() {
+        let endpoint = spawn_fragmented_unicode_sse_server();
+        let evidence = probe_llama_cpp_streaming(&endpoint, Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            evidence.snapshot.identity.reported_model.as_deref(),
+            Some("mødel.gguf")
+        );
     }
 
     #[test]
