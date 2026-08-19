@@ -18,6 +18,7 @@ use crate::{
         WindowsHardwareTelemetryProvider,
     },
     inference_telemetry_ui::InferenceTelemetryPanel,
+    telemetry_chart_ui::{TelemetryHistoryEngine, TelemetryHistorySnapshot, render_history_panel},
 };
 
 const TELEMETRY_CADENCE: Duration = Duration::from_secs(1);
@@ -30,6 +31,8 @@ const TELEMETRY_UI_CSS: &str = r#"
 struct TelemetryUiState {
     hardware: Option<HardwareTelemetrySnapshot>,
     gpu: Option<GpuTelemetrySnapshot>,
+    history: TelemetryHistorySnapshot,
+    history_error: Option<String>,
     sample_count: u64,
 }
 
@@ -52,15 +55,26 @@ impl TelemetryUiWorker {
         let handle = thread::spawn(move || {
             let mut hardware = WindowsHardwareTelemetryProvider::new(TELEMETRY_CADENCE);
             let mut gpu = NvidiaGpuTelemetryProvider::new();
+            let mut history = TelemetryHistoryEngine::default();
+            let mut history_snapshot = TelemetryHistorySnapshot::default();
             let mut sample_count = 0_u64;
 
             while !worker_stop.load(Ordering::Acquire) {
                 let hardware = hardware.sample(None);
                 let gpu = gpu.sample();
+                let history_error = match history.observe(&hardware, &gpu) {
+                    Ok(snapshot) => {
+                        history_snapshot = snapshot;
+                        None
+                    }
+                    Err(error) => Some(error.to_string()),
+                };
                 sample_count = sample_count.saturating_add(1);
                 state.set(TelemetryUiState {
                     hardware: Some(hardware),
                     gpu: Some(gpu),
+                    history: history_snapshot.clone(),
+                    history_error,
                     sample_count,
                 });
                 thread::park_timeout(TELEMETRY_CADENCE);
@@ -307,11 +321,13 @@ pub fn TelemetryView() -> Element {
                         div { class: "tm-empty", "Waiting for the first NVML provider sample." }
                     }
                 }
+
+                {render_history_panel(snapshot.history.clone(), snapshot.history_error.clone())}
             }
 
             div { class: "tm-note",
                 strong { "TRUTHFULNESS CONTRACT · " }
-                "Hardware/GPU values come from provider samples with source APIs attached. Inference values come only from an explicit streaming request. Disconnects invalidate live request continuity, and a TCP reconnect does not make old request metrics live again. History charts and alert presentation remain separate follow-up work."
+                "Hardware/GPU values come from provider samples with source APIs attached. Inference values come only from an explicit streaming request. Disconnects invalidate live request continuity, and a TCP reconnect does not make old request metrics live again. History charts use the same bounded provider samples and preserve stale/unavailable/error/missing intervals instead of drawing fake continuity. Alert presentation remains separate follow-up work."
             }
         }
     }
