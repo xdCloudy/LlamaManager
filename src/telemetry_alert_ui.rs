@@ -51,7 +51,8 @@ struct TelemetryAlertDashboardEngine {
 impl TelemetryAlertDashboardEngine {
     fn new() -> Self {
         Self {
-            engine: AlertEngine::new(default_rules()).expect("default telemetry alert rules are valid"),
+            engine: AlertEngine::new(default_rules())
+                .expect("default telemetry alert rules are valid"),
             latest: HashMap::new(),
             control_error: None,
             observation_error: None,
@@ -147,7 +148,14 @@ impl TelemetryAlertDashboardEngine {
         TelemetryAlertSnapshot {
             rules: self.engine.rules().to_vec(),
             instances,
-            history: self.engine.history().iter().rev().take(12).cloned().collect(),
+            history: self
+                .engine
+                .history()
+                .iter()
+                .rev()
+                .take(12)
+                .cloned()
+                .collect(),
             control_error: self.control_error.clone(),
             observation_error: self.observation_error.clone(),
         }
@@ -201,9 +209,11 @@ impl TelemetryAlertController {
     ) -> Result<(), AlertError> {
         match self.inner.lock() {
             Ok(mut engine) => engine.adjust_threshold(rule_id, trigger_delta, clear_delta),
-            Err(poisoned) => poisoned
-                .into_inner()
-                .adjust_threshold(rule_id, trigger_delta, clear_delta),
+            Err(poisoned) => {
+                poisoned
+                    .into_inner()
+                    .adjust_threshold(rule_id, trigger_delta, clear_delta)
+            }
         }
     }
 }
@@ -285,12 +295,9 @@ fn cpu_sample(
     key: &SeriesKey,
     reading: &TelemetryReading<f64>,
 ) -> Result<TimeSeriesSample, String> {
-    sample_from_state(
-        key,
-        reading.sampled_at_unix_ms,
-        &reading.state,
-        |value| *value,
-    )
+    sample_from_state(key, reading.sampled_at_unix_ms, &reading.state, |value| {
+        *value
+    })
 }
 
 fn gpu_temperature_sample(
@@ -310,9 +317,10 @@ fn sample_from_state<T>(
 ) -> Result<TimeSeriesSample, String> {
     let source = SampleSource::from_key(key);
     match state {
-        TelemetryState::Live { value } =>
+        TelemetryState::Live { value } => {
             TimeSeriesSample::live(timestamp_unix_ms, convert(value), source)
-                .map_err(|error| error.to_string()),
+                .map_err(|error| error.to_string())
+        }
         TelemetryState::Stale {
             last_value,
             last_observed_at_unix_ms,
@@ -585,12 +593,7 @@ mod tests {
     fn cpu_rule_fires_and_resolves_with_sustained_same_provider_samples() {
         let mut dashboard = TelemetryAlertDashboardEngine::new();
         let key = cpu_key(&cpu_reading(1_000, 95.0));
-        for (timestamp, value) in [
-            (1_000, 95.0),
-            (2_000, 96.0),
-            (3_000, 94.0),
-            (4_000, 95.0),
-        ] {
+        for (timestamp, value) in [(1_000, 95.0), (2_000, 96.0), (3_000, 94.0), (4_000, 95.0)] {
             let reading = cpu_reading(timestamp, value);
             dashboard
                 .observe_one(&key, &cpu_sample(&key, &reading).unwrap())
@@ -660,11 +663,7 @@ mod tests {
             .find(|rule| rule.id == CPU_RULE_ID)
             .unwrap()
             .threshold;
-        assert!(
-            dashboard
-                .adjust_threshold(CPU_RULE_ID, -15.0, 0.0)
-                .is_err()
-        );
+        assert!(dashboard.adjust_threshold(CPU_RULE_ID, -15.0, 0.0).is_err());
         let after = dashboard
             .engine
             .rules()
