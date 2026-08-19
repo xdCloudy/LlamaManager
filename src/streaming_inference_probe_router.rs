@@ -473,8 +473,7 @@ mod tests {
         let router_requests = router_requests.lock().unwrap();
         assert!(router_requests[0].starts_with("GET /models HTTP/1.1"));
         assert!(
-            router_requests[1]
-                .starts_with("GET /slots?model=Qwen-MTP&fail_on_no_slot=1 HTTP/1.1")
+            router_requests[1].starts_with("GET /slots?model=Qwen-MTP&fail_on_no_slot=1 HTTP/1.1")
         );
         assert!(router_requests[2].starts_with("GET /models HTTP/1.1"));
 
