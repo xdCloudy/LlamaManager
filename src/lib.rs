@@ -29,6 +29,7 @@ pub mod router;
 pub mod router_management;
 pub mod router_observability;
 pub mod streaming_inference_probe;
+pub mod telemetry_alert_ui;
 pub mod telemetry_alerts;
 pub mod telemetry_chart_ui;
 pub mod telemetry_history;
