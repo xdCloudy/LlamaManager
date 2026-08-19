@@ -18,9 +18,7 @@ use crate::{
         WindowsHardwareTelemetryProvider,
     },
     inference_telemetry_ui::InferenceTelemetryPanel,
-    telemetry_chart_ui::{
-        TelemetryHistoryEngine, TelemetryHistorySnapshot, render_history_panel,
-    },
+    telemetry_chart_ui::{TelemetryHistoryEngine, TelemetryHistorySnapshot, render_history_panel},
 };
 
 const TELEMETRY_CADENCE: Duration = Duration::from_secs(1);
