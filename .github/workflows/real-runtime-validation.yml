@@ -18,6 +18,7 @@ on:
       - "src/gpu_telemetry.rs"
       - "src/hardware_telemetry.rs"
       - "src/inference_telemetry.rs"
+      - "src/streaming_inference_probe.rs"
       - "src/llama.rs"
       - "src/persistence.rs"
       - "src/router.rs"
@@ -31,6 +32,7 @@ on:
       - "src/telemetry_alerts.rs"
       - "src/telemetry_history.rs"
       - "src/telemetry_overhead.rs"
+      - "src/telemetry_ui.rs"
   workflow_dispatch:
 
 permissions:
