@@ -18,9 +18,7 @@ use crate::{
         WindowsHardwareTelemetryProvider,
     },
     inference_telemetry_ui::InferenceTelemetryPanel,
-    telemetry_alert_ui::{
-        TelemetryAlertController, TelemetryAlertPanel, TelemetryAlertSnapshot,
-    },
+    telemetry_alert_ui::{TelemetryAlertController, TelemetryAlertPanel, TelemetryAlertSnapshot},
     telemetry_chart_ui::{TelemetryHistoryEngine, TelemetryHistorySnapshot, render_history_panel},
 };
 
