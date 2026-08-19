@@ -68,10 +68,7 @@ impl InferenceMonitorWorker {
                     if current.generation == generation
                         && current.endpoint.as_ref() == Some(&endpoint)
                     {
-                        current.reachable = Some(reachable);
-                        if !reachable && current.snapshot.is_some() {
-                            current.stale = true;
-                        }
+                        apply_reachability(&mut current, reachable);
                     }
                 }
 
@@ -97,6 +94,13 @@ impl Drop for InferenceMonitorWorkerInner {
             handle.thread().unpark();
             let _ = handle.join();
         }
+    }
+}
+
+fn apply_reachability(state: &mut InferenceUiState, reachable: bool) {
+    state.reachable = Some(reachable);
+    if !reachable && state.snapshot.is_some() {
+        state.stale = true;
     }
 }
 
@@ -235,6 +239,9 @@ fn failed_probe_reachability(error: &StreamingInferenceProbeError) -> Option<boo
         | StreamingInferenceProbeError::InvalidStatusLine
         | StreamingInferenceProbeError::HttpRejected { .. }
         | StreamingInferenceProbeError::MissingHeaders
+        | StreamingInferenceProbeError::NoLoadedRouterModel
+        | StreamingInferenceProbeError::AmbiguousRouterModels { .. }
+        | StreamingInferenceProbeError::Busy { .. }
         | StreamingInferenceProbeError::MissingFirstToken
         | StreamingInferenceProbeError::MissingTimings
         | StreamingInferenceProbeError::TelemetryParse(_) => Some(true),
@@ -582,6 +589,24 @@ mod tests {
             }),
             Some(true)
         );
+        assert_eq!(
+            failed_probe_reachability(&StreamingInferenceProbeError::Busy {
+                model: "Qwen3.8-27B".to_owned(),
+            }),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn reconnect_cannot_clear_stale_without_a_new_probe() {
+        let mut state = InferenceUiState {
+            reachable: Some(false),
+            stale: true,
+            ..InferenceUiState::default()
+        };
+        apply_reachability(&mut state, true);
+        assert_eq!(state.reachable, Some(true));
+        assert!(state.stale);
     }
 
     #[test]

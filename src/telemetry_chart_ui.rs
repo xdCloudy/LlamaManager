@@ -157,27 +157,43 @@ fn f64_sample(
     key: &SeriesKey,
     reading: &TelemetryReading<f64>,
 ) -> Result<TimeSeriesSample, HistoryError> {
-    sample_from_state(key, reading.sampled_at_unix_ms, &reading.state, |value| {
-        *value
-    })
+    sample_from_state(
+        key,
+        reading.sampled_at_unix_ms,
+        &reading.source.provider,
+        &reading.source.api,
+        &reading.state,
+        |value| *value,
+    )
 }
 
 fn u32_sample(
     key: &SeriesKey,
     reading: &GpuTelemetryReading<u32>,
 ) -> Result<TimeSeriesSample, HistoryError> {
-    sample_from_state(key, reading.sampled_at_unix_ms, &reading.state, |value| {
-        f64::from(*value)
-    })
+    sample_from_state(
+        key,
+        reading.sampled_at_unix_ms,
+        &reading.source.provider,
+        &reading.source.api,
+        &reading.state,
+        |value| f64::from(*value),
+    )
 }
 
 fn sample_from_state<T>(
     key: &SeriesKey,
     timestamp_unix_ms: u64,
+    source_provider: &str,
+    source_api: &str,
     state: &TelemetryState<T>,
     convert: impl Fn(&T) -> f64,
 ) -> Result<TimeSeriesSample, HistoryError> {
-    let source = SampleSource::from_key(key);
+    let source = SampleSource {
+        provider: source_provider.to_owned(),
+        api: source_api.to_owned(),
+        metric: key.metric.clone(),
+    };
     match state {
         TelemetryState::Live { value } => {
             TimeSeriesSample::live(timestamp_unix_ms, convert(value), source)
@@ -386,6 +402,26 @@ mod tests {
         assert!(projection.segments.is_empty());
         assert_eq!(projection.gaps.len(), 1);
         assert_eq!(projection.gaps[0].kind, ChartGapKind::Unavailable);
+    }
+
+    #[test]
+    fn source_drift_is_rejected_instead_of_relabelled() {
+        let reading = cpu_reading(TelemetryState::Live { value: 20.0 }, 1_000);
+        let key = SeriesKey::new(
+            "cpu.total_usage",
+            "percent",
+            reading.source.provider.clone(),
+            reading.source.api.clone(),
+            SeriesIdentity::new("host", "local-windows"),
+        );
+        let mut series = TimeSeries::new(key.clone(), HistoryPolicy::default()).unwrap();
+        series.push(f64_sample(&key, &reading).unwrap()).unwrap();
+
+        let mut drifted = cpu_reading(TelemetryState::Live { value: 30.0 }, 2_000);
+        drifted.source.api = "DifferentCpuApi".to_owned();
+        let sample = f64_sample(&key, &drifted).unwrap();
+        assert_eq!(sample.source.api, "DifferentCpuApi");
+        assert_eq!(series.push(sample), Err(HistoryError::SourceMismatch));
     }
 
     #[test]

@@ -769,11 +769,23 @@ impl ChartProjection {
         let mut gaps = Vec::new();
         let mut current: Option<(RenderClass, Vec<ChartPoint>)> = None;
         let mut previous_renderable_timestamp: Option<u64> = None;
-        let mut previous_timestamp: Option<u64> = None;
+        let mut pending_gap: Option<(ChartGapKind, u64, String)> = None;
 
         for sample in samples {
             match sample.state.render_class() {
                 Some(class) if sample.value.is_some() => {
+                    if let Some((kind, from, reason)) = pending_gap.take() {
+                        gaps.push(project_gap(
+                            kind,
+                            from,
+                            sample.timestamp_unix_ms,
+                            reason,
+                            timeline_start,
+                            timeline_end,
+                            options.width_px,
+                        ));
+                    }
+
                     if let (Some(previous), Some(limit)) =
                         (previous_renderable_timestamp, options.missing_gap_after_ms)
                         && sample.timestamp_unix_ms.saturating_sub(previous) > limit
@@ -811,8 +823,7 @@ impl ChartProjection {
                 }
                 _ => {
                     flush_segment(&mut current, &mut segments, options.width_px);
-                    let from = previous_timestamp.unwrap_or(sample.timestamp_unix_ms);
-                    if let Some((kind, reason)) = gap_for_state(&sample.state) {
+                    if let Some((kind, from, reason)) = pending_gap.take() {
                         gaps.push(project_gap(
                             kind,
                             from,
@@ -823,12 +834,25 @@ impl ChartProjection {
                             options.width_px,
                         ));
                     }
+                    if let Some((kind, reason)) = gap_for_state(&sample.state) {
+                        pending_gap = Some((kind, sample.timestamp_unix_ms, reason.to_owned()));
+                    }
                     previous_renderable_timestamp = None;
                 }
             }
-            previous_timestamp = Some(sample.timestamp_unix_ms);
         }
         flush_segment(&mut current, &mut segments, options.width_px);
+        if let Some((kind, from, reason)) = pending_gap {
+            gaps.push(project_gap(
+                kind,
+                from,
+                timeline_end.unwrap_or(from),
+                reason,
+                timeline_start,
+                timeline_end,
+                options.width_px,
+            ));
+        }
 
         Ok(Self {
             width_px: options.width_px,
@@ -1255,14 +1279,51 @@ mod tests {
             .unwrap();
 
         assert_eq!(projection.segments.len(), 2);
-        assert!(
-            projection
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == ChartGapKind::Disconnected)
-        );
+        let gap = projection
+            .gaps
+            .iter()
+            .find(|gap| gap.kind == ChartGapKind::Disconnected)
+            .expect("disconnect gap should be projected");
+        assert_eq!(gap.from_unix_ms, 2_500);
+        assert_eq!(gap.to_unix_ms, 4_000);
         assert_eq!(projection.segments[0].points.len(), 2);
         assert_eq!(projection.segments[1].points.len(), 1);
+    }
+
+    #[test]
+    fn consecutive_explicit_states_cover_their_forward_intervals() {
+        let key = key("GPU-1");
+        let source = SampleSource::from_key(&key);
+        let mut series = TimeSeries::new(key, test_policy(64)).unwrap();
+        series
+            .push(TimeSeriesSample::live(1_000, 10.0, source.clone()).unwrap())
+            .unwrap();
+        series
+            .push(TimeSeriesSample::disconnected(
+                2_000,
+                source.clone(),
+                "provider disconnected",
+            ))
+            .unwrap();
+        series
+            .push(TimeSeriesSample::unavailable(
+                3_000,
+                source.clone(),
+                "provider unavailable",
+            ))
+            .unwrap();
+        series
+            .push(TimeSeriesSample::live(5_000, 50.0, source).unwrap())
+            .unwrap();
+
+        let projection = series.project(ChartOptions::default()).unwrap();
+        assert_eq!(projection.gaps.len(), 2);
+        assert_eq!(projection.gaps[0].kind, ChartGapKind::Disconnected);
+        assert_eq!(projection.gaps[0].from_unix_ms, 2_000);
+        assert_eq!(projection.gaps[0].to_unix_ms, 3_000);
+        assert_eq!(projection.gaps[1].kind, ChartGapKind::Unavailable);
+        assert_eq!(projection.gaps[1].from_unix_ms, 3_000);
+        assert_eq!(projection.gaps[1].to_unix_ms, 5_000);
     }
 
     #[test]
