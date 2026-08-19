@@ -6,9 +6,7 @@ use std::{
 };
 
 use llamamanager::{
-    passive_inference_metrics::{
-        PassiveInferenceMetricsError, poll_passive_inference_metrics,
-    },
+    passive_inference_metrics::{PassiveInferenceMetricsError, poll_passive_inference_metrics},
     server_readiness::ServerEndpoint,
 };
 
@@ -88,8 +86,7 @@ fn a_full_failed_poll_can_recover_fresh_on_the_next_cycle() {
             | PassiveInferenceMetricsError::Connect { .. }
     ));
 
-    let recovered =
-        poll_passive_inference_metrics(&endpoint, Duration::from_millis(100)).unwrap();
+    let recovered = poll_passive_inference_metrics(&endpoint, Duration::from_millis(100)).unwrap();
     assert_eq!(recovered.source_endpoint, format!("127.0.0.1:{port}"));
     assert_eq!(recovered.prompt_tps, Some(80.25));
     assert_eq!(recovered.decode_tps, Some(6.75));
