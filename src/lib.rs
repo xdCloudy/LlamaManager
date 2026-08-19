@@ -8,6 +8,7 @@ pub mod gguf;
 pub mod gpu_telemetry;
 pub mod hardware_telemetry;
 pub mod inference_telemetry;
+#[path = "inference_telemetry_ui_live.rs"]
 pub mod inference_telemetry_ui;
 pub mod llama;
 pub mod model_library;
@@ -21,6 +22,7 @@ pub mod models_ini_effective;
 pub mod models_ini_ui;
 pub mod models_ini_validation;
 pub mod multimodal;
+pub mod passive_inference_metrics;
 pub mod paths;
 pub mod persistence;
 pub mod profile_generator;

@@ -19,6 +19,8 @@ on:
       - "src/hardware_telemetry.rs"
       - "src/inference_telemetry.rs"
       - "src/inference_telemetry_ui.rs"
+      - "src/inference_telemetry_ui_live.rs"
+      - "src/passive_inference_metrics.rs"
       - "src/streaming_inference_probe.rs"
       - "src/streaming_inference_probe_router.rs"
       - "src/llama.rs"
