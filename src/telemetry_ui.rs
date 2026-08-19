@@ -18,6 +18,7 @@ use crate::{
         WindowsHardwareTelemetryProvider,
     },
     inference_telemetry_ui::InferenceTelemetryPanel,
+    telemetry_alert_ui::{TelemetryAlertController, TelemetryAlertPanel, TelemetryAlertSnapshot},
     telemetry_chart_ui::{TelemetryHistoryEngine, TelemetryHistorySnapshot, render_history_panel},
 };
 
@@ -33,6 +34,7 @@ struct TelemetryUiState {
     gpu: Option<GpuTelemetrySnapshot>,
     history: TelemetryHistorySnapshot,
     history_error: Option<String>,
+    alerts: TelemetryAlertSnapshot,
     sample_count: u64,
 }
 
@@ -41,6 +43,7 @@ type TelemetryStateSignal = Signal<TelemetryUiState, SyncStorage>;
 #[derive(Clone)]
 struct TelemetryUiWorker {
     _inner: Arc<TelemetryUiWorkerInner>,
+    alert_controller: TelemetryAlertController,
 }
 
 struct TelemetryUiWorkerInner {
@@ -52,6 +55,8 @@ impl TelemetryUiWorker {
     fn spawn(mut state: TelemetryStateSignal) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
+        let alert_controller = TelemetryAlertController::default();
+        let worker_alerts = alert_controller.clone();
         let handle = thread::spawn(move || {
             let mut hardware = WindowsHardwareTelemetryProvider::new(TELEMETRY_CADENCE);
             let mut gpu = NvidiaGpuTelemetryProvider::new();
@@ -69,12 +74,14 @@ impl TelemetryUiWorker {
                     }
                     Err(error) => Some(error.to_string()),
                 };
+                let alerts = worker_alerts.observe(&hardware, &gpu);
                 sample_count = sample_count.saturating_add(1);
                 state.set(TelemetryUiState {
                     hardware: Some(hardware),
                     gpu: Some(gpu),
                     history: history_snapshot.clone(),
                     history_error,
+                    alerts,
                     sample_count,
                 });
                 thread::park_timeout(TELEMETRY_CADENCE);
@@ -86,7 +93,12 @@ impl TelemetryUiWorker {
                 stop,
                 handle: Mutex::new(Some(handle)),
             }),
+            alert_controller,
         }
+    }
+
+    fn alert_controller(&self) -> TelemetryAlertController {
+        self.alert_controller.clone()
     }
 }
 
@@ -230,7 +242,8 @@ fn gpu_card(adapter: &GpuAdapterTelemetry) -> Element {
 #[allow(non_snake_case)]
 pub fn TelemetryView() -> Element {
     let state = use_signal_sync(TelemetryUiState::default);
-    let _worker = use_hook(move || TelemetryUiWorker::spawn(state));
+    let worker = use_hook(move || TelemetryUiWorker::spawn(state));
+    let alert_controller = worker.alert_controller();
     let snapshot = state.read().clone();
 
     let hardware = snapshot.hardware.as_ref();
@@ -323,11 +336,16 @@ pub fn TelemetryView() -> Element {
                 }
 
                 {render_history_panel(snapshot.history.clone(), snapshot.history_error.clone())}
+
+                TelemetryAlertPanel {
+                    snapshot: snapshot.alerts.clone(),
+                    controller: alert_controller,
+                }
             }
 
             div { class: "tm-note",
                 strong { "TRUTHFULNESS CONTRACT · " }
-                "Hardware/GPU values come from provider samples with source APIs attached. Inference values come only from an explicit streaming request. Disconnects invalidate live request continuity, and a TCP reconnect does not make old request metrics live again. History charts use the same bounded provider samples and preserve stale/unavailable/error/missing intervals instead of drawing fake continuity. Alert presentation remains separate follow-up work."
+                "Hardware/GPU values come from provider samples with source APIs attached. Inference values come only from an explicit streaming request. Disconnects invalidate live request continuity, and a TCP reconnect does not make old request metrics live again. History charts and alerts consume the same provider samples; stale/unavailable/error evidence creates gaps or alert suppression instead of fake live continuity or zero values. Visual alert-cycle acceptance remains a separate interactive verification gate."
             }
         }
     }
