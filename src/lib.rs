@@ -24,8 +24,6 @@ pub mod models_ini_validation;
 pub mod multimodal;
 #[path = "passive_inference_metrics_resilient.rs"]
 pub mod passive_inference_metrics;
-#[path = "passive_inference_metrics.rs"]
-mod passive_inference_metrics_legacy;
 pub mod paths;
 pub mod persistence;
 pub mod profile_generator;
