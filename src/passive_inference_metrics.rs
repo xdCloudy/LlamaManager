@@ -360,9 +360,7 @@ fn parse_prometheus_metrics(
     let draft = metric(&metrics, "llamacpp:spec_decode_num_draft_tokens_total");
     let accepted = metric(&metrics, "llamacpp:spec_decode_num_accepted_tokens_total");
     let speculative_acceptance_rate = match (draft, accepted) {
-        (Some(draft), Some(accepted)) if draft > 0.0 => {
-            Some((accepted / draft).clamp(0.0, 1.0))
-        }
+        (Some(draft), Some(accepted)) if draft > 0.0 => Some((accepted / draft).clamp(0.0, 1.0)),
         _ => None,
     };
 
@@ -402,11 +400,7 @@ fn validate_endpoint(endpoint: &ServerEndpoint) -> Result<(), PassiveInferenceMe
         return Err(PassiveInferenceMetricsError::InvalidApiKey);
     }
     let addresses = resolve(endpoint)?;
-    if addresses
-        .iter()
-        .any(|address| !address.ip().is_loopback())
-        && !endpoint.allow_non_loopback
-    {
+    if addresses.iter().any(|address| !address.ip().is_loopback()) && !endpoint.allow_non_loopback {
         return Err(PassiveInferenceMetricsError::NonLoopbackDenied {
             host: endpoint.host.clone(),
         });
