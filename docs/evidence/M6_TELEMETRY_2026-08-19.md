@@ -4,6 +4,17 @@ Issue: #49
 
 This record captures verified interactive telemetry behaviour from the owner's real Windows workstation. It supplements the automated and Real Windows Runtime Validation evidence already linked from #49; it does not claim visual/runtime checks that were not actually exercised.
 
+## Operator capture identity
+
+The interactive evidence was supplied as a 1920×1032 screenshot of the production LlamaWave TELEMETRY workspace.
+
+```text
+capture dimensions: 1920x1032
+capture SHA-256:    a67c3140fea52b107af5e4e962569730a882e7ca49ebc49beb914726744759db
+```
+
+The image itself was operator-supplied outside the repository; the digest is retained here so the exact capture used for this evidence record remains identifiable.
+
 ## Live passive llama.cpp telemetry
 
 The owner attached the production TELEMETRY workspace to the stable llama.cpp router endpoint at `127.0.0.1:8080`. LlamaWave automatically resolved the active router child and displayed:
@@ -14,11 +25,11 @@ router endpoint:        127.0.0.1:8080
 resolved child source:  127.0.0.1:50973
 speculative mode:       draft-mtp
 prompt rate:            79.90 tok/s
- decode rate:            6.67 tok/s
+decode rate:            6.67 tok/s
 requests processing:    0
 requests deferred:      0
 prompt tokens total:    98,505
- decode tokens total:    17,329
+decode tokens total:    17,329
 busy slots / decode:    1.00
 ```
 
