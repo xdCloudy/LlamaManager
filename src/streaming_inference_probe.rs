@@ -159,11 +159,7 @@ pub fn probe_llama_cpp_streaming(
     if !headers_done {
         return Err(StreamingInferenceProbeError::MissingHeaders);
     }
-    if final_event.is_none()
-        && body_pending
-            .iter()
-            .any(|byte| !byte.is_ascii_whitespace())
-    {
+    if final_event.is_none() && body_pending.iter().any(|byte| !byte.is_ascii_whitespace()) {
         body_pending.push(b'\n');
         consume_sse_lines(
             &mut body_pending,
@@ -287,7 +283,9 @@ fn consume_sse_lines(
     event_count: &mut usize,
 ) {
     while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
-        let line = String::from_utf8_lossy(&pending[..newline]).trim().to_owned();
+        let line = String::from_utf8_lossy(&pending[..newline])
+            .trim()
+            .to_owned();
         pending.drain(..=newline);
         let Some(data_position) = line.find("data: ") else {
             continue;
