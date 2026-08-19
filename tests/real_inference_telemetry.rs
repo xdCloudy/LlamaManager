@@ -18,6 +18,7 @@ use llamamanager::{
     server_readiness::{
         ReadinessPolicy, ServerEndpoint, require_port_available, wait_for_server_ready,
     },
+    streaming_inference_probe::probe_llama_cpp_streaming,
 };
 use serde_json::{Value, json};
 
@@ -287,6 +288,31 @@ fn validates_real_streaming_inference_telemetry() {
         TelemetryState::Unavailable { .. }
     ));
 
+    let production_probe = probe_llama_cpp_streaming(&endpoint, Duration::from_secs(20))
+        .expect("production streaming telemetry probe must work against pinned real llama-server");
+    assert!((200..=299).contains(&production_probe.status_code));
+    assert!(production_probe.event_count >= 2);
+    assert!(production_probe.ttft_ms >= 0.0);
+    assert!(production_probe.request_latency_ms >= production_probe.ttft_ms);
+    assert!(
+        production_probe
+            .snapshot
+            .prompt_tps
+            .live_value()
+            .is_some_and(|value| *value > 0.0)
+    );
+    assert!(
+        production_probe
+            .snapshot
+            .decode_tps
+            .live_value()
+            .is_some_and(|value| *value >= 0.0)
+    );
+    assert!(matches!(
+        &production_probe.snapshot.mtp_generated_tokens.state,
+        TelemetryState::Unavailable { .. }
+    ));
+
     fs::write(
         evidence_dir.join("inference-telemetry.json"),
         serde_json::to_vec_pretty(&json!({
@@ -302,6 +328,13 @@ fn validates_real_streaming_inference_telemetry() {
             "request_latency_ms": stream.request_latency_ms,
             "final_event": serde_json::from_str::<Value>(&stream.final_event).unwrap(),
             "telemetry": snapshot,
+            "production_probe": {
+                "status_code": production_probe.status_code,
+                "event_count": production_probe.event_count,
+                "ttft_ms": production_probe.ttft_ms,
+                "request_latency_ms": production_probe.request_latency_ms,
+                "telemetry": production_probe.snapshot
+            },
             "github_sha": env::var("GITHUB_SHA").ok(),
             "runner_os": env::var("RUNNER_OS").ok()
         }))
