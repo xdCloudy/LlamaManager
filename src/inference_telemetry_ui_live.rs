@@ -732,12 +732,7 @@ mod tests {
 
     #[test]
     fn passive_poll_failure_retains_value_as_stale() {
-        let metric = passive_metric(
-            Some(3.39),
-            true,
-            |value| format!("{value:.2}"),
-            "runtime",
-        );
+        let metric = passive_metric(Some(3.39), true, |value| format!("{value:.2}"), "runtime");
         assert_eq!(metric.value, "3.39");
         assert_eq!(metric.state_label, "STALE");
     }
