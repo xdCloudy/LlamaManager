@@ -12,7 +12,9 @@ use crate::{
         AlertComparator, AlertEngine, AlertError, AlertEvaluation, AlertEvent, AlertEventKind,
         AlertPresentationState, AlertRule, AlertSeverity, AlertThreshold, AlertValueRange,
     },
-    telemetry_history::{MetricSupport, SampleSource, SeriesIdentity, SeriesKey, TimeSeriesSample, TimeSeriesState},
+    telemetry_history::{
+        MetricSupport, SampleSource, SeriesIdentity, SeriesKey, TimeSeriesSample, TimeSeriesState,
+    },
 };
 
 const CPU_RULE_ID: &str = "cpu-high-utilization";
@@ -85,7 +87,10 @@ impl TelemetryAlertDashboardEngine {
     }
 
     fn observe_one(&mut self, key: &SeriesKey, sample: &TimeSeriesSample) -> Result<(), String> {
-        let evaluations = self.engine.observe(key, sample).map_err(|error| error.to_string())?;
+        let evaluations = self
+            .engine
+            .observe(key, sample)
+            .map_err(|error| error.to_string())?;
         for evaluation in evaluations {
             let identity = evaluation.series_key.identity.disclosure();
             self.latest
@@ -156,7 +161,9 @@ pub struct TelemetryAlertController {
 
 impl std::fmt::Debug for TelemetryAlertController {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("TelemetryAlertController").finish_non_exhaustive()
+        formatter
+            .debug_struct("TelemetryAlertController")
+            .finish_non_exhaustive()
     }
 }
 
@@ -207,7 +214,8 @@ fn default_rules() -> Vec<AlertRule> {
             id: CPU_RULE_ID.to_owned(),
             metric: "cpu.total_usage".to_owned(),
             source_provider: "windows-native".to_owned(),
-            source_api: "NtQuerySystemInformation(SystemProcessorPerformanceInformation)".to_owned(),
+            source_api: "NtQuerySystemInformation(SystemProcessorPerformanceInformation)"
+                .to_owned(),
             severity: AlertSeverity::Warning,
             comparator: AlertComparator::Above,
             threshold: AlertThreshold {
@@ -281,7 +289,12 @@ fn cpu_sample(
     key: &SeriesKey,
     reading: &TelemetryReading<f64>,
 ) -> Result<TimeSeriesSample, String> {
-    sample_from_state(key, reading.sampled_at_unix_ms, &reading.state, |value| *value)
+    sample_from_state(
+        key,
+        reading.sampled_at_unix_ms,
+        &reading.state,
+        |value| *value,
+    )
 }
 
 fn gpu_temperature_sample(
@@ -301,12 +314,9 @@ fn sample_from_state<T>(
 ) -> Result<TimeSeriesSample, String> {
     let source = SampleSource::from_key(key);
     match state {
-        TelemetryState::Live { value } => TimeSeriesSample::live(
-            timestamp_unix_ms,
-            convert(value),
-            source,
-        )
-        .map_err(|error| error.to_string()),
+        TelemetryState::Live { value } =>
+            TimeSeriesSample::live(timestamp_unix_ms, convert(value), source)
+                .map_err(|error| error.to_string()),
         TelemetryState::Stale {
             last_value,
             last_observed_at_unix_ms,
@@ -517,7 +527,7 @@ pub fn TelemetryAlertPanel(
 #[cfg(test)]
 mod tests {
     use crate::{
-        gpu_telemetry::{GpuTelemetrySource, GpuTelemetryUnit},
+        gpu_telemetry::GpuTelemetryUnit,
         hardware_telemetry::{TelemetrySource, TelemetryUnit},
     };
 
@@ -622,7 +632,10 @@ mod tests {
             .unwrap();
         let snapshot = dashboard.snapshot();
         assert_eq!(snapshot.instances.len(), 1);
-        assert_eq!(snapshot.instances[0].state, AlertPresentationState::Suppressed);
+        assert_eq!(
+            snapshot.instances[0].state,
+            AlertPresentationState::Suppressed
+        );
         assert!(snapshot.history.is_empty());
     }
 
@@ -636,7 +649,11 @@ mod tests {
             .find(|rule| rule.id == CPU_RULE_ID)
             .unwrap()
             .threshold;
-        assert!(dashboard.adjust_threshold(CPU_RULE_ID, -15.0, 0.0).is_err());
+        assert!(
+            dashboard
+                .adjust_threshold(CPU_RULE_ID, -15.0, 0.0)
+                .is_err()
+        );
         let after = dashboard
             .engine
             .rules()
