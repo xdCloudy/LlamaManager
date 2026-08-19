@@ -18,6 +18,7 @@ on:
       - "src/gpu_telemetry.rs"
       - "src/hardware_telemetry.rs"
       - "src/inference_telemetry.rs"
+      - "src/inference_telemetry_ui.rs"
       - "src/streaming_inference_probe.rs"
       - "src/llama.rs"
       - "src/persistence.rs"
