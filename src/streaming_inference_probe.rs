@@ -89,6 +89,7 @@ pub fn probe_llama_cpp_streaming(
         .map_err(|error| io_error("request write", error))?;
 
     let mut received = Vec::new();
+    let mut total_bytes = 0_usize;
     let mut headers_done = false;
     let mut status_code = None;
     let mut body_pending = String::new();
@@ -104,12 +105,13 @@ pub fn probe_llama_cpp_streaming(
         if read == 0 {
             break;
         }
-        received.extend_from_slice(&buffer[..read]);
-        if received.len().saturating_add(body_pending.len()) > MAX_STREAM_BYTES {
+        total_bytes = total_bytes.saturating_add(read);
+        if total_bytes > MAX_STREAM_BYTES {
             return Err(StreamingInferenceProbeError::ResponseTooLarge {
                 limit: MAX_STREAM_BYTES,
             });
         }
+        received.extend_from_slice(&buffer[..read]);
 
         if !headers_done {
             let Some(header_end) = find_bytes(&received, b"\r\n\r\n") else {
@@ -198,7 +200,7 @@ fn validate_api_key(endpoint: &ServerEndpoint) -> Result<(), StreamingInferenceP
     if endpoint
         .api_key
         .as_deref()
-        .is_some_and(|key| key.contains(['\r', '\n']))
+        .is_some_and(|key| key.contains('\r') || key.contains('\n'))
     {
         Err(StreamingInferenceProbeError::InvalidApiKey)
     } else {
@@ -336,7 +338,7 @@ fn now_unix_ms() -> u64 {
 mod tests {
     use std::{
         io::{Read, Write},
-        net::TcpListener,
+        net::{TcpListener, TcpStream},
         sync::mpsc,
         thread,
     };
@@ -345,16 +347,39 @@ mod tests {
 
     use super::*;
 
+    fn read_http_request(stream: &mut TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut buffer = [0_u8; 2048];
+        loop {
+            let read = stream.read(&mut buffer).unwrap();
+            if read == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&buffer[..read]);
+            let Some(header_end) = find_bytes(&bytes, b"\r\n\r\n") else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&bytes[..header_end]);
+            let content_length = headers
+                .lines()
+                .find_map(|line| line.strip_prefix("Content-Length: "))
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(0);
+            if bytes.len() >= header_end + 4 + content_length {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
     fn spawn_sse_server(status: u16) -> (ServerEndpoint, mpsc::Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut buffer = [0_u8; 8192];
-            let read = stream.read(&mut buffer).unwrap();
-            tx.send(String::from_utf8_lossy(&buffer[..read]).into_owned())
-                .unwrap();
+            let request = read_http_request(&mut stream);
+            tx.send(request).unwrap();
 
             if status != 200 {
                 let response = format!(
