@@ -6,8 +6,7 @@ use std::{
 };
 
 use llamamanager::{
-    passive_inference_metrics::poll_passive_inference_metrics,
-    server_readiness::ServerEndpoint,
+    passive_inference_metrics::poll_passive_inference_metrics, server_readiness::ServerEndpoint,
 };
 
 fn read_request(stream: &mut TcpStream) -> String {
@@ -85,7 +84,10 @@ fn transient_old_child_timeout_is_recovered_before_stale_fallback_is_needed() {
     child_thread.join().unwrap();
     drop(old_child);
 
-    assert_eq!(snapshot.source_endpoint, format!("127.0.0.1:{live_child_port}"));
+    assert_eq!(
+        snapshot.source_endpoint,
+        format!("127.0.0.1:{live_child_port}")
+    );
     assert_eq!(snapshot.decode_tps, Some(19.51));
     assert_eq!(snapshot.speculative_draft_tokens_total, Some(5797.0));
     assert_eq!(snapshot.speculative_accepted_tokens_total, Some(4999.0));
