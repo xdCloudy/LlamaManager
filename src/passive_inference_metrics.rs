@@ -721,14 +721,8 @@ mod tests {
             "llamacpp:spec_decode_num_accepted_tokens_total 114\n",
             "llamacpp:spec_decode_num_drafts_total 52\n",
         );
-        let snapshot = parse_prometheus_metrics(
-            body,
-            None,
-            "127.0.0.1:8080".to_owned(),
-            None,
-            1234,
-        )
-        .unwrap();
+        let snapshot =
+            parse_prometheus_metrics(body, None, "127.0.0.1:8080".to_owned(), None, 1234).unwrap();
         assert_eq!(snapshot.speculative_draft_tokens_total, Some(145.0));
         assert_eq!(snapshot.speculative_accepted_tokens_total, Some(114.0));
         assert_eq!(snapshot.speculative_drafts_total, Some(52.0));
@@ -814,7 +808,11 @@ mod tests {
         assert_eq!(requests.len(), 2);
         assert!(requests[0].starts_with("GET /models HTTP/1.1"));
         assert!(requests[1].starts_with("GET /metrics HTTP/1.1"));
-        assert!(requests.iter().all(|request| !request.contains("/completion")));
+        assert!(
+            requests
+                .iter()
+                .all(|request| !request.contains("/completion"))
+        );
         assert_eq!(snapshot.model.as_deref(), Some("Qwen3.8-27B"));
         assert_eq!(snapshot.requests_processing, Some(1.0));
         assert_eq!(snapshot.speculative_draft_tokens_total, Some(144.0));
