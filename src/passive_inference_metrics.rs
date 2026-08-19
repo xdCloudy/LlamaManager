@@ -101,6 +101,7 @@ pub fn poll_passive_inference_metrics(
     validate_endpoint(configured_endpoint)?;
     let target = resolve_passive_metrics_target(configured_endpoint, timeout)?;
     let response = get(&target.endpoint, "/metrics", timeout, "metrics read")?;
+
     match response.status_code {
         200..=299 => {}
         404 | 405 | 501 => {
@@ -129,11 +130,7 @@ fn resolve_passive_metrics_target(
     timeout: Duration,
 ) -> Result<PassiveMetricsTarget, PassiveInferenceMetricsError> {
     if !endpoint_is_loopback(configured_endpoint)? {
-        return Ok(PassiveMetricsTarget {
-            endpoint: configured_endpoint.clone(),
-            model: None,
-            speculative_type: None,
-        });
+        return Ok(direct_target(configured_endpoint));
     }
 
     let response = match get(
@@ -143,35 +140,17 @@ fn resolve_passive_metrics_target(
         "router model discovery",
     ) {
         Ok(response) => response,
-        Err(_) => {
-            return Ok(PassiveMetricsTarget {
-                endpoint: configured_endpoint.clone(),
-                model: None,
-                speculative_type: None,
-            });
-        }
+        Err(_) => return Ok(direct_target(configured_endpoint)),
     };
     if !(200..=299).contains(&response.status_code) {
-        return Ok(PassiveMetricsTarget {
-            endpoint: configured_endpoint.clone(),
-            model: None,
-            speculative_type: None,
-        });
+        return Ok(direct_target(configured_endpoint));
     }
 
     let Ok(payload) = serde_json::from_slice::<Value>(&response.body) else {
-        return Ok(PassiveMetricsTarget {
-            endpoint: configured_endpoint.clone(),
-            model: None,
-            speculative_type: None,
-        });
+        return Ok(direct_target(configured_endpoint));
     };
     let Some(models) = payload.get("data").and_then(Value::as_array) else {
-        return Ok(PassiveMetricsTarget {
-            endpoint: configured_endpoint.clone(),
-            model: None,
-            speculative_type: None,
-        });
+        return Ok(direct_target(configured_endpoint));
     };
 
     let mut router_shape_seen = false;
@@ -184,9 +163,7 @@ fn resolve_passive_metrics_target(
             .pointer("/status/value")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        if !status.is_empty() {
-            router_shape_seen = true;
-        }
+        router_shape_seen |= !status.is_empty();
         if !matches!(status, "loaded" | "sleeping") {
             continue;
         }
@@ -203,20 +180,12 @@ fn resolve_passive_metrics_target(
     }
 
     if !router_shape_seen {
-        return Ok(PassiveMetricsTarget {
-            endpoint: configured_endpoint.clone(),
-            model: None,
-            speculative_type: None,
-        });
+        return Ok(direct_target(configured_endpoint));
     }
-
     let Some(candidate) = select_router_child(candidates) else {
-        return Ok(PassiveMetricsTarget {
-            endpoint: configured_endpoint.clone(),
-            model: None,
-            speculative_type: None,
-        });
+        return Ok(direct_target(configured_endpoint));
     };
+
     let Some(port) = candidate
         .child_port
         .filter(|port| *port != configured_endpoint.port)
@@ -240,6 +209,14 @@ fn resolve_passive_metrics_target(
     })
 }
 
+fn direct_target(endpoint: &ServerEndpoint) -> PassiveMetricsTarget {
+    PassiveMetricsTarget {
+        endpoint: endpoint.clone(),
+        model: None,
+        speculative_type: None,
+    }
+}
+
 fn select_router_child(mut candidates: Vec<RouterChildCandidate>) -> Option<RouterChildCandidate> {
     match candidates.len() {
         0 => None,
@@ -253,11 +230,7 @@ fn select_router_child(mut candidates: Vec<RouterChildCandidate>) -> Option<Rout
                 .into_iter()
                 .filter(|candidate| candidate.last_used == Some(newest_timestamp));
             let selected = newest.next()?;
-            if newest.next().is_some() {
-                None
-            } else {
-                Some(selected)
-            }
+            newest.next().is_none().then_some(selected)
         }
     }
 }
@@ -271,7 +244,7 @@ fn child_port_from_model(model: &Value) -> Option<u16> {
             model
                 .pointer("/status/args")
                 .and_then(Value::as_array)
-                .and_then(child_port_from_args)
+                .and_then(|args| child_port_from_args(args))
         })
 }
 
@@ -279,7 +252,7 @@ fn speculative_type_from_model(model: &Value) -> Option<String> {
     model
         .pointer("/status/args")
         .and_then(Value::as_array)
-        .and_then(speculative_type_from_args)
+        .and_then(|args| speculative_type_from_args(args))
 }
 
 fn parse_port_value(value: &Value) -> Option<u16> {
@@ -385,12 +358,11 @@ fn parse_prometheus_metrics(
     }
 
     let draft = metric(&metrics, "llamacpp:spec_decode_num_draft_tokens_total");
-    let accepted = metric(
-        &metrics,
-        "llamacpp:spec_decode_num_accepted_tokens_total",
-    );
+    let accepted = metric(&metrics, "llamacpp:spec_decode_num_accepted_tokens_total");
     let speculative_acceptance_rate = match (draft, accepted) {
-        (Some(draft), Some(accepted)) if draft > 0.0 => Some((accepted / draft).clamp(0.0, 1.0)),
+        (Some(draft), Some(accepted)) if draft > 0.0 => {
+            Some((accepted / draft).clamp(0.0, 1.0))
+        }
         _ => None,
     };
 
@@ -430,7 +402,11 @@ fn validate_endpoint(endpoint: &ServerEndpoint) -> Result<(), PassiveInferenceMe
         return Err(PassiveInferenceMetricsError::InvalidApiKey);
     }
     let addresses = resolve(endpoint)?;
-    if addresses.iter().any(|address| !address.ip().is_loopback()) && !endpoint.allow_non_loopback {
+    if addresses
+        .iter()
+        .any(|address| !address.ip().is_loopback())
+        && !endpoint.allow_non_loopback
+    {
         return Err(PassiveInferenceMetricsError::NonLoopbackDenied {
             host: endpoint.host.clone(),
         });
@@ -660,9 +636,11 @@ mod tests {
         assert_eq!(snapshot.requests_processing, Some(1.0));
         assert_eq!(snapshot.cached_prompt_tokens_total, None);
         assert!(snapshot.is_mtp());
-        assert!(snapshot
-            .speculative_acceptance_rate
-            .is_some_and(|ratio| (ratio - 75.0 / 79.0).abs() < 1e-9));
+        assert!(
+            snapshot
+                .speculative_acceptance_rate
+                .is_some_and(|ratio| (ratio - 75.0 / 79.0).abs() < 1e-9)
+        );
     }
 
     #[test]
@@ -727,7 +705,11 @@ mod tests {
         assert_eq!(requests.len(), 2);
         assert!(requests[0].starts_with("GET /models HTTP/1.1"));
         assert!(requests[1].starts_with("GET /metrics HTTP/1.1"));
-        assert!(requests.iter().all(|request| !request.contains("/completion")));
+        assert!(
+            requests
+                .iter()
+                .all(|request| !request.contains("/completion"))
+        );
         assert_eq!(snapshot.model.as_deref(), Some("Qwen3.8-27B"));
         assert_eq!(snapshot.requests_processing, Some(1.0));
         assert!(snapshot.is_mtp());
