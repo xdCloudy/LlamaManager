@@ -10,8 +10,6 @@ pub mod hardware_telemetry;
 pub mod inference_telemetry;
 #[path = "inference_telemetry_ui_live.rs"]
 pub mod inference_telemetry_ui;
-#[path = "inference_telemetry_ui.rs"]
-mod inference_telemetry_ui_legacy;
 pub mod llama;
 pub mod model_library;
 pub mod model_library_actions;
