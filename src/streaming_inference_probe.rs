@@ -380,7 +380,7 @@ mod tests {
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let request = read_http_request(&mut stream);
-            tx.send(request).unwrap();
+            let _ = tx.send(request);
 
             if status != 200 {
                 let response = format!(
