@@ -255,13 +255,14 @@ fn discover_router_model(
         if !status.is_empty() {
             router_shape_seen = true;
         }
-        if status == "loaded" {
+        if matches!(status, "loaded" | "sleeping") {
             loaded.push(RouterModelCandidate {
                 id: id.to_owned(),
                 last_used: model
                     .pointer("/status/last_used")
                     .and_then(Value::as_u64)
-                    .or_else(|| model.get("last_used").and_then(Value::as_u64)),
+                    .or_else(|| model.get("last_used").and_then(Value::as_u64))
+                    .or_else(|| model.get("last_used_ms").and_then(Value::as_u64)),
             });
         }
     }
@@ -316,7 +317,7 @@ fn ensure_router_slot_available(
 
     match response.status_code {
         200..=299 => Ok(()),
-        403 | 404 | 405 => Ok(()),
+        403..=405 => Ok(()),
         503 => Err(StreamingInferenceProbeError::Busy {
             model: model.to_owned(),
         }),
