@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     io::{Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -11,6 +12,7 @@ use thiserror::Error;
 use crate::server_readiness::ServerEndpoint;
 
 const MAX_CONTROL_BYTES: usize = 1024 * 1024;
+const RETRY_ATTEMPTS: usize = 4;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PassiveInferenceMetricsSnapshot {
@@ -94,11 +96,48 @@ struct PassiveMetricsTarget {
     speculative_type: Option<String>,
 }
 
+/// Poll llama.cpp monitoring without submitting inference work.
+///
+/// Router child processes are ephemeral. A child can disappear between `/models` discovery and
+/// the `/metrics` read, and a heavily loaded Windows child can occasionally miss the short socket
+/// deadline. Retry transient failures by re-running the whole discovery path before surfacing an
+/// error to the UI. This lets a fresh sample replace the previous one before the UI needs its
+/// STALE fallback in the common race/timeout cases.
 pub fn poll_passive_inference_metrics(
     configured_endpoint: &ServerEndpoint,
     timeout: Duration,
 ) -> Result<PassiveInferenceMetricsSnapshot, PassiveInferenceMetricsError> {
     validate_endpoint(configured_endpoint)?;
+
+    for attempt in 0..RETRY_ATTEMPTS {
+        match poll_once(configured_endpoint, timeout) {
+            Ok(snapshot) => return Ok(snapshot),
+            Err(error) if should_retry(&error) && attempt + 1 < RETRY_ATTEMPTS => {
+                let delay_ms = retry_delay_ms(attempt);
+                if delay_ms != 0 {
+                    thread::sleep(Duration::from_millis(delay_ms));
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    unreachable!("retry loop always returns on its final attempt")
+}
+
+fn retry_delay_ms(attempt: usize) -> u64 {
+    match attempt {
+        0 => 0,
+        1 => 75,
+        2 => 175,
+        _ => 0,
+    }
+}
+
+fn poll_once(
+    configured_endpoint: &ServerEndpoint,
+    timeout: Duration,
+) -> Result<PassiveInferenceMetricsSnapshot, PassiveInferenceMetricsError> {
     let target = resolve_passive_metrics_target(configured_endpoint, timeout)?;
     let response = get(&target.endpoint, "/metrics", timeout, "metrics read")?;
 
@@ -123,6 +162,26 @@ pub fn poll_passive_inference_metrics(
         target.speculative_type,
         now_unix_ms(),
     )
+}
+
+fn should_retry(error: &PassiveInferenceMetricsError) -> bool {
+    match error {
+        PassiveInferenceMetricsError::Connect { .. }
+        | PassiveInferenceMetricsError::Io { .. }
+        | PassiveInferenceMetricsError::MissingHeaders
+        | PassiveInferenceMetricsError::InvalidStatusLine => true,
+        PassiveInferenceMetricsError::MetricsHttpRejected { status_code } => {
+            matches!(*status_code, 400 | 408 | 425 | 429 | 500 | 502 | 503 | 504)
+        }
+        PassiveInferenceMetricsError::InvalidPort
+        | PassiveInferenceMetricsError::InvalidApiKey
+        | PassiveInferenceMetricsError::HostResolution { .. }
+        | PassiveInferenceMetricsError::NonLoopbackDenied { .. }
+        | PassiveInferenceMetricsError::ResponseTooLarge { .. }
+        | PassiveInferenceMetricsError::MetricsUnsupported { .. }
+        | PassiveInferenceMetricsError::InvalidUtf8
+        | PassiveInferenceMetricsError::NoRecognizedMetrics => false,
+    }
 }
 
 fn resolve_passive_metrics_target(
@@ -326,12 +385,10 @@ fn parse_prometheus_metrics(
         if line.is_empty() || line.starts_with('#') || !line.starts_with("llamacpp:") {
             continue;
         }
-        let Some((name, value)) = line.split_once(char::is_whitespace) else {
+        let Some((series, value)) = line.split_once(char::is_whitespace) else {
             continue;
         };
-        if name.contains('{') {
-            continue;
-        }
+        let name = series.split_once('{').map_or(series, |(name, _)| name);
         let Ok(value) = value.trim().parse::<f64>() else {
             continue;
         };
@@ -345,6 +402,7 @@ fn parse_prometheus_metrics(
         "llamacpp:predicted_tokens_seconds",
         "llamacpp:prompt_tokens_total",
         "llamacpp:prompt_tokens_cached_total",
+        "llamacpp:prompt_tokens_cache_total",
         "llamacpp:tokens_predicted_total",
         "llamacpp:requests_processing",
         "llamacpp:requests_deferred",
@@ -352,13 +410,34 @@ fn parse_prometheus_metrics(
         "llamacpp:spec_decode_num_draft_tokens_total",
         "llamacpp:spec_decode_num_accepted_tokens_total",
         "llamacpp:spec_decode_num_drafts_total",
+        "llamacpp:draft_tokens_total",
+        "llamacpp:draft_tokens_accepted_total",
     ];
     if !recognized.iter().any(|name| metrics.contains_key(name)) {
         return Err(PassiveInferenceMetricsError::NoRecognizedMetrics);
     }
 
-    let draft = metric(&metrics, "llamacpp:spec_decode_num_draft_tokens_total");
-    let accepted = metric(&metrics, "llamacpp:spec_decode_num_accepted_tokens_total");
+    let cached_prompt = metric_any(
+        &metrics,
+        &[
+            "llamacpp:prompt_tokens_cached_total",
+            "llamacpp:prompt_tokens_cache_total",
+        ],
+    );
+    let draft = metric_any(
+        &metrics,
+        &[
+            "llamacpp:spec_decode_num_draft_tokens_total",
+            "llamacpp:draft_tokens_total",
+        ],
+    );
+    let accepted = metric_any(
+        &metrics,
+        &[
+            "llamacpp:spec_decode_num_accepted_tokens_total",
+            "llamacpp:draft_tokens_accepted_total",
+        ],
+    );
     let speculative_acceptance_rate = match (draft, accepted) {
         (Some(draft), Some(accepted)) if draft > 0.0 => Some((accepted / draft).clamp(0.0, 1.0)),
         _ => None,
@@ -372,7 +451,7 @@ fn parse_prometheus_metrics(
         prompt_tps: metric(&metrics, "llamacpp:prompt_tokens_seconds"),
         decode_tps: metric(&metrics, "llamacpp:predicted_tokens_seconds"),
         prompt_tokens_total: metric(&metrics, "llamacpp:prompt_tokens_total"),
-        cached_prompt_tokens_total: metric(&metrics, "llamacpp:prompt_tokens_cached_total"),
+        cached_prompt_tokens_total: cached_prompt,
         decode_tokens_total: metric(&metrics, "llamacpp:tokens_predicted_total"),
         requests_processing: metric(&metrics, "llamacpp:requests_processing"),
         requests_deferred: metric(&metrics, "llamacpp:requests_deferred"),
@@ -386,6 +465,10 @@ fn parse_prometheus_metrics(
 
 fn metric(metrics: &BTreeMap<&str, f64>, name: &str) -> Option<f64> {
     metrics.get(name).copied()
+}
+
+fn metric_any(metrics: &BTreeMap<&str, f64>, names: &[&str]) -> Option<f64> {
+    names.iter().find_map(|name| metric(metrics, name))
 }
 
 fn validate_endpoint(endpoint: &ServerEndpoint) -> Result<(), PassiveInferenceMetricsError> {
@@ -605,49 +688,83 @@ mod tests {
     }
 
     #[test]
-    fn parses_runtime_metrics_without_zero_filling_missing_fields() {
+    fn parses_current_and_legacy_metric_names_without_zero_filling() {
         let body = concat!(
-            "# TYPE llamacpp:prompt_tokens_seconds gauge\n",
-            "llamacpp:prompt_tokens_seconds 41.78\n",
-            "llamacpp:predicted_tokens_seconds 4.54\n",
-            "llamacpp:prompt_tokens_total 29907\n",
-            "llamacpp:tokens_predicted_total 94\n",
+            "llamacpp:prompt_tokens_seconds{model=\"Qwen3.8-27B\"} 118.98\n",
+            "llamacpp:predicted_tokens_seconds{model=\"Qwen3.8-27B\"} 5.83\n",
+            "llamacpp:prompt_tokens_total 57016\n",
+            "llamacpp:prompt_tokens_cache_total 44812\n",
+            "llamacpp:tokens_predicted_total 171\n",
             "llamacpp:requests_processing 1\n",
-            "llamacpp:spec_decode_num_draft_tokens_total 79\n",
-            "llamacpp:spec_decode_num_accepted_tokens_total 75\n",
+            "llamacpp:draft_tokens_total 144\n",
+            "llamacpp:draft_tokens_accepted_total 127\n",
         );
         let snapshot = parse_prometheus_metrics(
             body,
             Some("Qwen3.8-27B".to_owned()),
-            "127.0.0.1:65421".to_owned(),
+            "127.0.0.1:50973".to_owned(),
             Some("draft-mtp".to_owned()),
             1234,
         )
         .unwrap();
 
-        assert_eq!(snapshot.prompt_tps, Some(41.78));
-        assert_eq!(snapshot.decode_tps, Some(4.54));
-        assert_eq!(snapshot.requests_processing, Some(1.0));
-        assert_eq!(snapshot.cached_prompt_tokens_total, None);
+        assert_eq!(snapshot.prompt_tps, Some(118.98));
+        assert_eq!(snapshot.decode_tps, Some(5.83));
+        assert_eq!(snapshot.cached_prompt_tokens_total, Some(44812.0));
+        assert_eq!(snapshot.speculative_draft_tokens_total, Some(144.0));
+        assert_eq!(snapshot.speculative_accepted_tokens_total, Some(127.0));
         assert!(snapshot.is_mtp());
         assert!(
             snapshot
                 .speculative_acceptance_rate
-                .is_some_and(|ratio| (ratio - 75.0 / 79.0).abs() < 1e-9)
+                .is_some_and(|ratio| (ratio - 127.0 / 144.0).abs() < 1e-9)
         );
+    }
+
+    #[test]
+    fn supports_new_spec_decode_metric_names_too() {
+        let body = concat!(
+            "llamacpp:requests_processing 1\n",
+            "llamacpp:spec_decode_num_draft_tokens_total 145\n",
+            "llamacpp:spec_decode_num_accepted_tokens_total 114\n",
+            "llamacpp:spec_decode_num_drafts_total 52\n",
+        );
+        let snapshot =
+            parse_prometheus_metrics(body, None, "127.0.0.1:8080".to_owned(), None, 1234).unwrap();
+        assert_eq!(snapshot.speculative_draft_tokens_total, Some(145.0));
+        assert_eq!(snapshot.speculative_accepted_tokens_total, Some(114.0));
+        assert_eq!(snapshot.speculative_drafts_total, Some(52.0));
     }
 
     #[test]
     fn router_args_expose_child_port_and_explicit_mtp_mode() {
         let model: Value = serde_json::from_str(
-            r#"{"status":{"args":["llama-server","--port","65421","--spec-type","draft-mtp"]}}"#,
+            r#"{"status":{"args":["llama-server","--port","50973","--spec-type","draft-mtp"]}}"#,
         )
         .unwrap();
-        assert_eq!(child_port_from_model(&model), Some(65421));
+        assert_eq!(child_port_from_model(&model), Some(50973));
         assert_eq!(
             speculative_type_from_model(&model).as_deref(),
             Some("draft-mtp")
         );
+    }
+
+    #[test]
+    fn retries_transient_transport_and_router_failures() {
+        assert!(should_retry(&PassiveInferenceMetricsError::Io {
+            phase: "metrics read",
+            message: "timed out".to_owned(),
+        }));
+        assert!(should_retry(&PassiveInferenceMetricsError::Connect {
+            endpoint: "127.0.0.1:50973".to_owned(),
+            message: "refused".to_owned(),
+        }));
+        assert!(should_retry(
+            &PassiveInferenceMetricsError::MetricsHttpRejected { status_code: 400 }
+        ));
+        assert!(!should_retry(
+            &PassiveInferenceMetricsError::MetricsUnsupported { status_code: 501 }
+        ));
     }
 
     #[test]
@@ -680,9 +797,9 @@ mod tests {
                 "text/plain",
                 concat!(
                     "llamacpp:requests_processing 1\n",
-                    "llamacpp:predicted_tokens_seconds 3.39\n",
-                    "llamacpp:spec_decode_num_draft_tokens_total 145\n",
-                    "llamacpp:spec_decode_num_accepted_tokens_total 114\n",
+                    "llamacpp:predicted_tokens_seconds 5.83\n",
+                    "llamacpp:draft_tokens_total 144\n",
+                    "llamacpp:draft_tokens_accepted_total 127\n",
                 ),
             );
         });
@@ -706,6 +823,7 @@ mod tests {
         );
         assert_eq!(snapshot.model.as_deref(), Some("Qwen3.8-27B"));
         assert_eq!(snapshot.requests_processing, Some(1.0));
+        assert_eq!(snapshot.speculative_draft_tokens_total, Some(144.0));
         assert!(snapshot.is_mtp());
     }
 }
