@@ -62,7 +62,8 @@ impl InferenceMonitorWorker {
                 };
 
                 if let Some(endpoint) = endpoint {
-                    let reachable = check_endpoint_reachable(&endpoint, REACHABILITY_TIMEOUT).is_ok();
+                    let reachable =
+                        check_endpoint_reachable(&endpoint, REACHABILITY_TIMEOUT).is_ok();
                     let mut current = state.write();
                     if current.generation == generation
                         && current.endpoint.as_ref() == Some(&endpoint)
@@ -319,7 +320,9 @@ fn continuity_presentation(state: &InferenceUiState) -> (&'static str, &'static 
         (Some(false), _, _) => (
             "DISCONNECTED",
             "error",
-            format!("{endpoint} is not accepting connections; prior live request evidence is stale."),
+            format!(
+                "{endpoint} is not accepting connections; prior live request evidence is stale."
+            ),
         ),
         (Some(true), true, true) => (
             "RECONNECTED · EVIDENCE STALE",
@@ -331,12 +334,16 @@ fn continuity_presentation(state: &InferenceUiState) -> (&'static str, &'static 
         (Some(true), false, true) => (
             "REACHABLE · REQUEST LIVE",
             "",
-            format!("{endpoint} is reachable and the latest request evidence has uninterrupted continuity."),
+            format!(
+                "{endpoint} is reachable and the latest request evidence has uninterrupted continuity."
+            ),
         ),
         (Some(true), _, false) => (
             "REACHABLE · NO REQUEST EVIDENCE",
             "",
-            format!("{endpoint} is reachable, but no successful telemetry request has been captured."),
+            format!(
+                "{endpoint} is reachable, but no successful telemetry request has been captured."
+            ),
         ),
     }
 }
