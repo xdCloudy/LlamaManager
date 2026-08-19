@@ -281,13 +281,18 @@ fn select_loaded_router_model(
         count => {
             let newest = loaded
                 .iter()
-                .filter_map(|model| model.last_used.map(|last_used| (last_used, model.id.as_str())))
+                .filter_map(|model| {
+                    model
+                        .last_used
+                        .map(|last_used| (last_used, model.id.as_str()))
+                })
                 .max_by_key(|(last_used, _)| *last_used);
             let Some((newest_timestamp, newest_id)) = newest else {
                 return Err(StreamingInferenceProbeError::AmbiguousRouterModels { count });
             };
             let unique_newest = loaded.iter().filter(|model| {
-                model.last_used
+                model
+                    .last_used
                     .is_some_and(|last_used| last_used == newest_timestamp)
             });
             if unique_newest.count() != 1 {
@@ -447,11 +452,7 @@ fn build_completion_request(endpoint: &ServerEndpoint, model: Option<&str>) -> S
         endpoint.authority()
     );
     append_auth_header(&mut request, endpoint);
-    request.push_str(&format!(
-        "Content-Length: {}\r\n\r\n{}",
-        body.len(),
-        body
-    ));
+    request.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
     request
 }
 
@@ -730,9 +731,9 @@ mod tests {
 
         let (slots_request, completion_request) =
             request_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert!(slots_request.starts_with(
-            "GET /slots?model=Qwen3.8-27B&fail_on_no_slot=1 HTTP/1.1"
-        ));
+        assert!(
+            slots_request.starts_with("GET /slots?model=Qwen3.8-27B&fail_on_no_slot=1 HTTP/1.1")
+        );
         assert!(slots_request.contains("Authorization: Bearer secret-token\r\n"));
         assert!(completion_request.starts_with("POST /completion HTTP/1.1"));
         assert!(completion_request.contains("\"model\":\"Qwen3.8-27B\""));
