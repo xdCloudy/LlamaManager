@@ -272,10 +272,6 @@ fn gpu_temperature_key(
         Some(uuid) => SeriesIdentity::new("gpu-uuid", uuid.clone()),
         None => SeriesIdentity::new("gpu-index", identity.index.to_string()),
     };
-    let series_identity = match identity.name.as_ref() {
-        Some(name) => series_identity.with_display_name(name.clone()),
-        None => series_identity,
-    };
     SeriesKey::new(
         "gpu.temperature",
         "celsius",
@@ -557,6 +553,17 @@ mod tests {
         }
     }
 
+    fn gpu_identity(name: &str) -> GpuAdapterIdentity {
+        GpuAdapterIdentity {
+            vendor: "NVIDIA".to_owned(),
+            index: 0,
+            uuid: Some("GPU-1".to_owned()),
+            name: Some(name.to_owned()),
+            stable_for_evidence: true,
+            identity_note: None,
+        }
+    }
+
     #[test]
     fn default_rules_are_valid_and_source_exact() {
         let rules = default_rules();
@@ -608,15 +615,19 @@ mod tests {
     }
 
     #[test]
+    fn gpu_display_name_change_does_not_change_alert_identity() {
+        let reading = gpu_temp_reading(TelemetryState::Live { value: 70 }, 1_000);
+        let first = gpu_temperature_key(&gpu_identity("RTX Original"), &reading);
+        let renamed = gpu_temperature_key(&gpu_identity("RTX Renamed"), &reading);
+        assert_eq!(first, renamed);
+        assert_eq!(first.identity.namespace, "gpu-uuid");
+        assert_eq!(first.identity.stable_id, "GPU-1");
+        assert!(first.identity.display_name.is_none());
+    }
+
+    #[test]
     fn stale_gpu_temperature_is_suppressed_and_never_fires() {
-        let identity = GpuAdapterIdentity {
-            vendor: "NVIDIA".to_owned(),
-            index: 0,
-            uuid: Some("GPU-1".to_owned()),
-            name: Some("RTX Test".to_owned()),
-            stable_for_evidence: true,
-            identity_note: None,
-        };
+        let identity = gpu_identity("RTX Test");
         let reading = gpu_temp_reading(
             TelemetryState::Stale {
                 last_value: Some(99),
