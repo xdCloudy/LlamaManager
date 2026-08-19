@@ -41,7 +41,10 @@ pub enum StreamingInferenceProbeError {
     #[error("could not connect to {endpoint}: {message}")]
     Connect { endpoint: String, message: String },
     #[error("streaming inference {phase} failed: {message}")]
-    Io { phase: &'static str, message: String },
+    Io {
+        phase: &'static str,
+        message: String,
+    },
     #[error("streaming inference response exceeded {limit} bytes")]
     ResponseTooLarge { limit: usize },
     #[error("streaming inference returned an invalid HTTP status line")]
@@ -227,9 +230,7 @@ fn resolve_endpoint(
             message: "host resolved to no addresses".into(),
         });
     }
-    if addresses.iter().any(|address| !address.ip().is_loopback())
-        && !endpoint.allow_non_loopback
-    {
+    if addresses.iter().any(|address| !address.ip().is_loopback()) && !endpoint.allow_non_loopback {
         return Err(StreamingInferenceProbeError::NonLoopbackDenied {
             host: endpoint.host.clone(),
         });
