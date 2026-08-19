@@ -13,7 +13,6 @@ use crate::server_readiness::ServerEndpoint;
 
 const MAX_CONTROL_BYTES: usize = 1024 * 1024;
 const RETRY_ATTEMPTS: usize = 4;
-const RETRY_BACKOFF_MS: [u64; RETRY_ATTEMPTS - 1] = [0, 75, 175];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PassiveInferenceMetricsSnapshot {
@@ -114,7 +113,7 @@ pub fn poll_passive_inference_metrics(
         match poll_once(configured_endpoint, timeout) {
             Ok(snapshot) => return Ok(snapshot),
             Err(error) if should_retry(&error) && attempt + 1 < RETRY_ATTEMPTS => {
-                let delay_ms = RETRY_BACKOFF_MS[attempt];
+                let delay_ms = retry_delay_ms(attempt);
                 if delay_ms != 0 {
                     thread::sleep(Duration::from_millis(delay_ms));
                 }
@@ -124,6 +123,15 @@ pub fn poll_passive_inference_metrics(
     }
 
     unreachable!("retry loop always returns on its final attempt")
+}
+
+fn retry_delay_ms(attempt: usize) -> u64 {
+    match attempt {
+        0 => 0,
+        1 => 75,
+        2 => 175,
+        _ => 0,
+    }
 }
 
 fn poll_once(
