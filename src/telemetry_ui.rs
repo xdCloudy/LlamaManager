@@ -17,6 +17,7 @@ use crate::{
         HardwareTelemetryProvider, HardwareTelemetrySnapshot, TelemetryReading, TelemetryState,
         WindowsHardwareTelemetryProvider,
     },
+    inference_telemetry_ui::InferenceTelemetryPanel,
 };
 
 const TELEMETRY_CADENCE: Duration = Duration::from_secs(1);
@@ -238,7 +239,7 @@ pub fn TelemetryView() -> Element {
                 div {
                     div { class: "tm-kicker", "> LLAMAWAVE / TELEMETRY" }
                     h1 { "LIVE SYSTEM TELEMETRY" }
-                    p { "Provider-backed Windows and NVIDIA telemetry. Missing, stale, and failed evidence is labelled explicitly; this view never converts unsupported data into zero." }
+                    p { "Provider-backed Windows/NVIDIA telemetry plus explicit request-bound llama.cpp inference evidence. Missing, stale, and failed data stays labelled; this view never converts unsupported evidence into zero." }
                 }
                 div { class: "tm-live",
                     span { class: "tm-live-dot" }
@@ -285,15 +286,7 @@ pub fn TelemetryView() -> Element {
                     }
                 }
 
-                section { class: "tm-panel",
-                    div { class: "tm-panel-head",
-                        h2 { "INFERENCE" }
-                        span { class: "tm-source", "request-bound evidence" }
-                    }
-                    div { class: "tm-empty",
-                        "No active inference stream is attached to this surface yet. Prompt/decode/TTFT/MTP values remain unavailable rather than inferred from unrelated counters."
-                    }
-                }
+                InferenceTelemetryPanel {}
 
                 section { class: "tm-panel wide",
                     div { class: "tm-panel-head",
@@ -318,7 +311,7 @@ pub fn TelemetryView() -> Element {
 
             div { class: "tm-note",
                 strong { "TRUTHFULNESS CONTRACT · " }
-                "Live values come from provider samples with source APIs attached. Stale values retain their last observation and reason. Error/unavailable states stay visible. Inference charts and alert presentation are intentionally not claimed by this foundation slice."
+                "Hardware/GPU values come from provider samples with source APIs attached. Inference values come only from an explicit streaming request. Disconnects invalidate live request continuity, and a TCP reconnect does not make old request metrics live again. History charts and alert presentation remain separate follow-up work."
             }
         }
     }
