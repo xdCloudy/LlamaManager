@@ -21,6 +21,7 @@ use llamamanager::{
         RouterOperationKind, RouterOperationState,
     },
     server_readiness::ServerEndpoint,
+    streaming_inference_probe::probe_llama_cpp_streaming,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -272,6 +273,26 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
     assert!(is_ready(model_phase(&load.registry, &model_a_id)));
     assert_eq!(load.http_statuses, vec![200]);
 
+    let router_probe = probe_llama_cpp_streaming(&endpoint, Duration::from_secs(30))
+        .expect("production streaming telemetry probe must route through the real router endpoint");
+    assert!((200..=299).contains(&router_probe.status_code));
+    assert!(router_probe.event_count >= 2);
+    assert_eq!(
+        router_probe.snapshot.identity.endpoint,
+        endpoint.authority()
+    );
+    assert_eq!(
+        router_probe.snapshot.identity.requested_model.as_deref(),
+        Some(model_a_id.as_str())
+    );
+    assert!(
+        router_probe
+            .snapshot
+            .prompt_tps
+            .live_value()
+            .is_some_and(|value| *value > 0.0)
+    );
+
     let unload = controller
         .unload_model(
             &installation,
@@ -379,6 +400,13 @@ fn validates_real_router_load_unload_reload_preload_and_switch() {
         "model_b": model_b,
         "model_a_id": model_a_id,
         "model_b_id": model_b_id,
+        "router_streaming_probe": {
+            "status_code": router_probe.status_code,
+            "event_count": router_probe.event_count,
+            "ttft_ms": router_probe.ttft_ms,
+            "request_latency_ms": router_probe.request_latency_ms,
+            "telemetry": router_probe.snapshot
+        },
         "reload": reload,
         "load": load,
         "unload": unload,
