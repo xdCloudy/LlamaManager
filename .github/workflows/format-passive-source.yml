@@ -1,0 +1,29 @@
+name: Format Passive Source
+
+on:
+  pull_request:
+    paths:
+      - "src/passive_inference_telemetry.rs"
+      - ".github/workflows/format-passive-source.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format passive telemetry implementation
+        shell: pwsh
+        run: rustfmt --edition 2024 src/passive_inference_telemetry.rs
+      - name: Upload formatted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-passive-source
+          path: src/passive_inference_telemetry.rs
+          if-no-files-found: error
+          retention-days: 1
