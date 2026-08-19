@@ -343,6 +343,7 @@ fn buffered_request(
         .map_err(|error| io_error(phase, error))?;
 
     let mut received = Vec::new();
+    let mut expected_total = None;
     let mut buffer = [0_u8; 4096];
     loop {
         let read = stream
@@ -357,13 +358,53 @@ fn buffered_request(
                 limit: MAX_CONTROL_BYTES,
             });
         }
+
+        if expected_total.is_none()
+            && let Some(header_end) = find_bytes(&received, b"\r\n\r\n")
+            && let Some(content_length) = parse_content_length(&received[..header_end])
+        {
+            let total = header_end
+                .checked_add(4)
+                .and_then(|value| value.checked_add(content_length))
+                .ok_or(StreamingInferenceProbeError::ResponseTooLarge {
+                    limit: MAX_CONTROL_BYTES,
+                })?;
+            if total > MAX_CONTROL_BYTES {
+                return Err(StreamingInferenceProbeError::ResponseTooLarge {
+                    limit: MAX_CONTROL_BYTES,
+                });
+            }
+            expected_total = Some(total);
+        }
+
+        if expected_total.is_some_and(|total| received.len() >= total) {
+            break;
+        }
     }
 
     let header_end =
         find_bytes(&received, b"\r\n\r\n").ok_or(StreamingInferenceProbeError::MissingHeaders)?;
+    let headers = &received[..header_end];
+    if let Some(expected) = expected_total
+        && received.len() < expected
+    {
+        return Err(StreamingInferenceProbeError::Io {
+            phase,
+            message: format!(
+                "response ended before declared Content-Length completed: received {} of {expected} bytes",
+                received.len()
+            ),
+        });
+    }
+
+    let mut body = received[header_end + 4..].to_vec();
+    if let Some(content_length) = parse_content_length(headers) {
+        body.truncate(content_length);
+    }
+
     Ok(BufferedHttpResponse {
-        status_code: parse_status_code(&received[..header_end])?,
-        body: received[header_end + 4..].to_vec(),
+        status_code: parse_status_code(headers)?,
+        body,
     })
 }
 
@@ -475,6 +516,18 @@ fn parse_status_code(headers: &[u8]) -> Result<u16, StreamingInferenceProbeError
         .nth(1)
         .and_then(|value| value.parse::<u16>().ok())
         .ok_or(StreamingInferenceProbeError::InvalidStatusLine)
+}
+
+fn parse_content_length(headers: &[u8]) -> Option<usize> {
+    let headers = String::from_utf8_lossy(headers);
+    headers.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        if name.trim().eq_ignore_ascii_case("content-length") {
+            value.trim().parse::<usize>().ok()
+        } else {
+            None
+        }
+    })
 }
 
 fn percent_encode_query(value: &str) -> String {
@@ -832,6 +885,14 @@ mod tests {
         assert_eq!(
             percent_encode_query("Qwen/3.8:27B A"),
             "Qwen%2F3.8%3A27B%20A"
+        );
+    }
+
+    #[test]
+    fn content_length_parser_is_case_insensitive() {
+        assert_eq!(
+            parse_content_length(b"HTTP/1.1 200 OK\r\ncontent-length: 42\r\n"),
+            Some(42)
         );
     }
 }
