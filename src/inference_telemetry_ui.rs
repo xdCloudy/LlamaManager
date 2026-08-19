@@ -233,9 +233,9 @@ fn failed_probe_reachability(error: &StreamingInferenceProbeError) -> Option<boo
         | StreamingInferenceProbeError::HostResolution { .. } => Some(false),
         StreamingInferenceProbeError::InvalidPort
         | StreamingInferenceProbeError::InvalidApiKey
-        | StreamingInferenceProbeError::NonLoopbackDenied { .. } => None,
-        StreamingInferenceProbeError::Io { .. }
-        | StreamingInferenceProbeError::ResponseTooLarge { .. }
+        | StreamingInferenceProbeError::NonLoopbackDenied { .. }
+        | StreamingInferenceProbeError::Io { .. } => None,
+        StreamingInferenceProbeError::ResponseTooLarge { .. }
         | StreamingInferenceProbeError::InvalidStatusLine
         | StreamingInferenceProbeError::HttpRejected { .. }
         | StreamingInferenceProbeError::MissingHeaders
@@ -324,7 +324,12 @@ fn continuity_presentation(state: &InferenceUiState) -> (&'static str, &'static 
             "",
             format!("Checking endpoint continuity for {endpoint}."),
         ),
-        (Some(false), _, _) => (
+        (Some(false), _, false) => (
+            "DISCONNECTED",
+            "error",
+            format!("{endpoint} is not accepting connections; no request evidence is available."),
+        ),
+        (Some(false), _, true) => (
             "DISCONNECTED",
             "error",
             format!(
@@ -584,6 +589,13 @@ mod tests {
             Some(false)
         );
         assert_eq!(
+            failed_probe_reachability(&StreamingInferenceProbeError::Io {
+                phase: "response read",
+                message: "connection reset".to_owned(),
+            }),
+            None
+        );
+        assert_eq!(
             failed_probe_reachability(&StreamingInferenceProbeError::HttpRejected {
                 status_code: 401,
             }),
@@ -595,6 +607,20 @@ mod tests {
             }),
             Some(true)
         );
+    }
+
+    #[test]
+    fn disconnected_without_request_evidence_does_not_claim_stale_history() {
+        let state = InferenceUiState {
+            endpoint: Some(ServerEndpoint::loopback(8080)),
+            reachable: Some(false),
+            ..InferenceUiState::default()
+        };
+        let (label, class, detail) = continuity_presentation(&state);
+        assert_eq!(label, "DISCONNECTED");
+        assert_eq!(class, "error");
+        assert!(detail.contains("no request evidence"));
+        assert!(!detail.contains("prior live request evidence"));
     }
 
     #[test]
