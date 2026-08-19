@@ -239,6 +239,9 @@ fn failed_probe_reachability(error: &StreamingInferenceProbeError) -> Option<boo
         | StreamingInferenceProbeError::InvalidStatusLine
         | StreamingInferenceProbeError::HttpRejected { .. }
         | StreamingInferenceProbeError::MissingHeaders
+        | StreamingInferenceProbeError::NoLoadedRouterModel
+        | StreamingInferenceProbeError::AmbiguousRouterModels { .. }
+        | StreamingInferenceProbeError::Busy { .. }
         | StreamingInferenceProbeError::MissingFirstToken
         | StreamingInferenceProbeError::MissingTimings
         | StreamingInferenceProbeError::TelemetryParse(_) => Some(true),
@@ -583,6 +586,12 @@ mod tests {
         assert_eq!(
             failed_probe_reachability(&StreamingInferenceProbeError::HttpRejected {
                 status_code: 401,
+            }),
+            Some(true)
+        );
+        assert_eq!(
+            failed_probe_reachability(&StreamingInferenceProbeError::Busy {
+                model: "Qwen3.8-27B".to_owned(),
             }),
             Some(true)
         );
