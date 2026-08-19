@@ -24,7 +24,6 @@ pub mod models_ini_effective;
 pub mod models_ini_ui;
 pub mod models_ini_validation;
 pub mod multimodal;
-#[path = "passive_inference_telemetry_include.rs"]
 pub mod passive_inference_telemetry;
 pub mod paths;
 pub mod persistence;
