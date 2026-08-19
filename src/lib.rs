@@ -28,7 +28,10 @@ pub mod router;
 #[path = "router_management_ui.rs"]
 pub mod router_management;
 pub mod router_observability;
+#[path = "streaming_inference_probe_router.rs"]
 pub mod streaming_inference_probe;
+#[path = "streaming_inference_probe.rs"]
+mod streaming_inference_probe_legacy;
 pub mod telemetry_alert_ui;
 pub mod telemetry_alerts;
 pub mod telemetry_chart_ui;
