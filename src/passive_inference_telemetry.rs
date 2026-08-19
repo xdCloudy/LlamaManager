@@ -56,7 +56,7 @@ struct PollTarget {
     mtp_explicit: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct SlotSnapshot {
     total_slots: Option<u64>,
     busy_slots: Option<u64>,
@@ -90,13 +90,12 @@ pub fn poll_passive_inference_telemetry(
     let metrics_result = get(&target.endpoint, &metrics_path, timeout)
         .and_then(|response| require_success(response, "metrics"));
     let slots_result = get(&target.endpoint, &slots_path, timeout)
-        .and_then(|response| require_success(response, "slots"));
+        .and_then(|response| require_success(response, "slots"))
+        .and_then(|body| parse_slots(&body));
 
-    if metrics_result.is_err() && slots_result.is_err() {
+    if let (Err(metrics_error), Err(slots_error)) = (&metrics_result, &slots_result) {
         return Err(format!(
-            "passive llama.cpp monitoring failed: metrics: {}; slots: {}",
-            metrics_result.as_ref().unwrap_err(),
-            slots_result.as_ref().unwrap_err()
+            "passive llama.cpp monitoring failed: metrics: {metrics_error}; slots: {slots_error}"
         ));
     }
 
@@ -107,30 +106,18 @@ pub fn poll_passive_inference_telemetry(
         .ok()
         .map(|body| parse_prometheus_metrics(body))
         .unwrap_or_default();
-    let slots = slots_result
-        .as_ref()
-        .ok()
-        .and_then(|body| parse_slots(body).ok())
-        .unwrap_or_default();
+    let slots = slots_result.as_ref().ok().cloned().unwrap_or_default();
 
-    let speculative_draft_tokens_total = metric_u64(
-        &metrics,
-        "llamacpp:spec_decode_num_draft_tokens_total",
-    );
-    let speculative_accepted_tokens_total = metric_u64(
-        &metrics,
-        "llamacpp:spec_decode_num_accepted_tokens_total",
-    );
+    let speculative_draft_tokens_total =
+        metric_u64(&metrics, "llamacpp:spec_decode_num_draft_tokens_total");
+    let speculative_accepted_tokens_total =
+        metric_u64(&metrics, "llamacpp:spec_decode_num_accepted_tokens_total");
     let mtp_explicit = target.mtp_explicit || slots.mtp_explicit;
-    let mtp_acceptance_rate = if mtp_explicit {
-        speculative_draft_tokens_total.and_then(|drafted| {
-            (drafted > 0).then(|| {
-                speculative_accepted_tokens_total.unwrap_or(0) as f64 / drafted as f64
-            })
-        })
-    } else {
-        None
-    };
+    let mtp_acceptance_rate = mtp_acceptance_rate(
+        speculative_draft_tokens_total,
+        speculative_accepted_tokens_total,
+        mtp_explicit,
+    );
 
     Ok(PassiveInferenceTelemetrySnapshot {
         logical_endpoint: endpoint.authority(),
@@ -156,7 +143,10 @@ pub fn poll_passive_inference_telemetry(
     })
 }
 
-fn discover_poll_target(endpoint: &ServerEndpoint, timeout: Duration) -> Result<PollTarget, String> {
+fn discover_poll_target(
+    endpoint: &ServerEndpoint,
+    timeout: Duration,
+) -> Result<PollTarget, String> {
     let response = get(endpoint, "/models", timeout)?;
     if matches!(response.status, 404 | 405) {
         return Ok(direct_target(endpoint));
@@ -202,8 +192,9 @@ fn discover_poll_target(endpoint: &ServerEndpoint, timeout: Duration) -> Result<
     if !router_shape {
         return Ok(direct_target(endpoint));
     }
-    let selected = select_router_candidate(candidates)
-        .ok_or_else(|| "router has no uniquely selectable loaded model for passive polling".to_owned())?;
+    let selected = select_router_candidate(candidates).ok_or_else(|| {
+        "router has no uniquely selectable loaded model for passive polling".to_owned()
+    })?;
 
     if endpoint_is_loopback(endpoint)?
         && let Some(port) = selected.child_port.filter(|port| *port != endpoint.port)
@@ -368,8 +359,21 @@ fn metric_f64(metrics: &std::collections::HashMap<String, f64>, name: &str) -> O
 
 fn metric_u64(metrics: &std::collections::HashMap<String, f64>, name: &str) -> Option<u64> {
     metric_f64(metrics, name)
-        .filter(|value| *value <= u64::MAX as f64)
-        .map(|value| value.round() as u64)
+        .filter(|value| *value <= u64::MAX as f64 && value.fract().abs() < f64::EPSILON)
+        .map(|value| value as u64)
+}
+
+fn mtp_acceptance_rate(
+    drafted: Option<u64>,
+    accepted: Option<u64>,
+    mtp_explicit: bool,
+) -> Option<f64> {
+    if !mtp_explicit {
+        return None;
+    }
+    drafted.zip(accepted).and_then(|(drafted, accepted)| {
+        (drafted > 0 && accepted <= drafted).then(|| accepted as f64 / drafted as f64)
+    })
 }
 
 fn parse_slots(body: &[u8]) -> Result<SlotSnapshot, String> {
@@ -473,7 +477,9 @@ fn get(endpoint: &ServerEndpoint, path: &str, timeout: Duration) -> Result<HttpR
     let mut buffer = [0_u8; 4096];
     let mut expected_total = None;
     loop {
-        let read = stream.read(&mut buffer).map_err(|error| error.to_string())?;
+        let read = stream
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
         if read == 0 {
             break;
         }
@@ -639,8 +645,14 @@ mod tests {
         let metrics = parse_prometheus_metrics(
             b"# TYPE llamacpp:prompt_tokens_seconds gauge\nllamacpp:prompt_tokens_seconds 41.78\nllamacpp:predicted_tokens_seconds 4.54\nllamacpp:requests_processing 1\nllamacpp:spec_decode_num_draft_tokens_total 79\nllamacpp:spec_decode_num_accepted_tokens_total 75\n",
         );
-        assert_eq!(metric_f64(&metrics, "llamacpp:prompt_tokens_seconds"), Some(41.78));
-        assert_eq!(metric_f64(&metrics, "llamacpp:requests_processing"), Some(1.0));
+        assert_eq!(
+            metric_f64(&metrics, "llamacpp:prompt_tokens_seconds"),
+            Some(41.78)
+        );
+        assert_eq!(
+            metric_f64(&metrics, "llamacpp:requests_processing"),
+            Some(1.0)
+        );
         assert_eq!(
             metric_u64(&metrics, "llamacpp:spec_decode_num_accepted_tokens_total"),
             Some(75)
@@ -668,6 +680,63 @@ mod tests {
         .unwrap();
         assert_eq!(child_port_from_model(&model), Some(65421));
         assert!(model_explicit_mtp(&model));
+    }
+
+    #[test]
+    fn missing_or_invalid_mtp_counter_never_becomes_fake_zero_acceptance() {
+        assert_eq!(mtp_acceptance_rate(Some(79), None, true), None);
+        assert_eq!(mtp_acceptance_rate(None, Some(75), true), None);
+        assert_eq!(mtp_acceptance_rate(Some(0), Some(0), true), None);
+        assert_eq!(mtp_acceptance_rate(Some(79), Some(80), true), None);
+        assert_eq!(mtp_acceptance_rate(Some(79), Some(75), false), None);
+        assert_eq!(
+            mtp_acceptance_rate(Some(79), Some(75), true),
+            Some(75.0 / 79.0)
+        );
+    }
+
+    #[test]
+    fn integer_counter_parser_rejects_fractional_values_instead_of_rounding() {
+        let metrics = parse_prometheus_metrics(
+            b"llamacpp:prompt_tokens_total 12.5\nllamacpp:tokens_predicted_total 12\n",
+        );
+        assert_eq!(metric_u64(&metrics, "llamacpp:prompt_tokens_total"), None);
+        assert_eq!(
+            metric_u64(&metrics, "llamacpp:tokens_predicted_total"),
+            Some(12)
+        );
+    }
+
+    #[test]
+    fn malformed_slots_remains_explicit_partial_error_when_metrics_are_live() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            for index in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let _ = read_request(&mut stream);
+                match index {
+                    0 => write_response(&mut stream, 404, "application/json", "{}"),
+                    1 => write_response(
+                        &mut stream,
+                        200,
+                        "text/plain",
+                        "llamacpp:prompt_tokens_seconds 41.78\n",
+                    ),
+                    _ => write_response(&mut stream, 200, "application/json", "{broken"),
+                }
+            }
+        });
+
+        let snapshot = poll_passive_inference_telemetry(
+            &ServerEndpoint::loopback(port),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(snapshot.prompt_tps, Some(41.78));
+        assert_eq!(snapshot.busy_slots, None);
+        assert!(snapshot.metrics_error.is_none());
+        assert!(snapshot.slots_error.is_some());
     }
 
     #[test]
@@ -713,6 +782,10 @@ mod tests {
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 3);
         assert!(requests.iter().all(|request| request.starts_with("GET ")));
-        assert!(requests.iter().all(|request| !request.contains("/completion")));
+        assert!(
+            requests
+                .iter()
+                .all(|request| !request.contains("/completion"))
+        );
     }
 }
