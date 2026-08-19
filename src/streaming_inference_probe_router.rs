@@ -140,7 +140,10 @@ fn select_router_child(mut candidates: Vec<RouterChildCandidate>) -> Option<Rout
         0 => None,
         1 => candidates.pop(),
         _ => {
-            let newest_timestamp = candidates.iter().filter_map(|candidate| candidate.last_used).max()?;
+            let newest_timestamp = candidates
+                .iter()
+                .filter_map(|candidate| candidate.last_used)
+                .max()?;
             let mut newest = candidates
                 .into_iter()
                 .filter(|candidate| candidate.last_used == Some(newest_timestamp));
@@ -207,13 +210,18 @@ fn child_port_from_args(args: &[Value]) -> Option<u16> {
     None
 }
 
-fn check_child_slot(endpoint: &ServerEndpoint, timeout: Duration) -> Result<ChildSlotState, String> {
+fn check_child_slot(
+    endpoint: &ServerEndpoint,
+    timeout: Duration,
+) -> Result<ChildSlotState, String> {
     let response = control_get(endpoint, "/slots?fail_on_no_slot=1", timeout)?;
     match response.0 {
         200..=299 => Ok(ChildSlotState::Available),
         403..=405 => Ok(ChildSlotState::Unsupported),
         503 => Ok(ChildSlotState::Busy),
-        status => Err(format!("autodiscovered child /slots returned HTTP {status}")),
+        status => Err(format!(
+            "autodiscovered child /slots returned HTTP {status}"
+        )),
     }
 }
 
@@ -277,13 +285,17 @@ fn control_get(
     let mut buffer = [0_u8; 4096];
     let mut expected_total = None;
     loop {
-        let read = stream.read(&mut buffer).map_err(|error| error.to_string())?;
+        let read = stream
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
         if read == 0 {
             break;
         }
         bytes.extend_from_slice(&buffer[..read]);
         if bytes.len() > MAX_CONTROL_BYTES {
-            return Err(format!("control response exceeded {MAX_CONTROL_BYTES} bytes"));
+            return Err(format!(
+                "control response exceeded {MAX_CONTROL_BYTES} bytes"
+            ));
         }
         if expected_total.is_none()
             && let Some(header_end) = find_bytes(&bytes, b"\r\n\r\n")
@@ -460,7 +472,10 @@ mod tests {
 
         let router_requests = router_requests.lock().unwrap();
         assert!(router_requests[0].starts_with("GET /models HTTP/1.1"));
-        assert!(router_requests[1].starts_with("GET /slots?model=Qwen-MTP&fail_on_no_slot=1 HTTP/1.1"));
+        assert!(
+            router_requests[1]
+                .starts_with("GET /slots?model=Qwen-MTP&fail_on_no_slot=1 HTTP/1.1")
+        );
         assert!(router_requests[2].starts_with("GET /models HTTP/1.1"));
 
         let child_requests = child_requests.lock().unwrap();
