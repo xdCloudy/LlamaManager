@@ -12,9 +12,7 @@ use dioxus::prelude::*;
 use crate::{
     hardware_telemetry::TelemetryState,
     inference_telemetry::{InferenceMetric, InferenceTelemetrySnapshot},
-    passive_inference_metrics::{
-        PassiveInferenceMetricsSnapshot, poll_passive_inference_metrics,
-    },
+    passive_inference_metrics::{PassiveInferenceMetricsSnapshot, poll_passive_inference_metrics},
     server_readiness::ServerEndpoint,
     streaming_inference_probe::{
         StreamingInferenceProbeError, check_endpoint_reachable, probe_llama_cpp_streaming,
@@ -80,10 +78,8 @@ impl InferenceMonitorWorker {
                         current.reachable = Some(reachable);
                         match passive {
                             Ok(snapshot) => {
-                                let source_changed = current
-                                    .passive
-                                    .as_ref()
-                                    .is_some_and(|previous| {
+                                let source_changed =
+                                    current.passive.as_ref().is_some_and(|previous| {
                                         previous.source_endpoint != snapshot.source_endpoint
                                     });
                                 if source_changed && current.request.is_some() {
@@ -618,17 +614,17 @@ pub fn InferenceTelemetryPanel() -> Element {
                                 "llama.cpp /metrics · llamacpp:n_busy_slots_per_decode".to_owned(),
                             )}
                             {metric_card(
-                                if passive.is_mtp() { "MTP DRAFTED TOTAL" } else { "SPEC DRAFTED TOTAL" }.to_owned(),
+                                (if passive.is_mtp() { "MTP DRAFTED TOTAL" } else { "SPEC DRAFTED TOTAL" }).to_owned(),
                                 passive_metric(passive.speculative_draft_tokens_total, snapshot.passive_stale, |value| format!("{value:.0} tok"), "Cumulative speculative draft-token counter. It is labelled MTP only when router args explicitly report an MTP spec type."),
                                 "llama.cpp /metrics · llamacpp:spec_decode_num_draft_tokens_total".to_owned(),
                             )}
                             {metric_card(
-                                if passive.is_mtp() { "MTP ACCEPTED TOTAL" } else { "SPEC ACCEPTED TOTAL" }.to_owned(),
+                                (if passive.is_mtp() { "MTP ACCEPTED TOTAL" } else { "SPEC ACCEPTED TOTAL" }).to_owned(),
                                 passive_metric(passive.speculative_accepted_tokens_total, snapshot.passive_stale, |value| format!("{value:.0} tok"), "Cumulative speculative accepted-token counter."),
                                 "llama.cpp /metrics · llamacpp:spec_decode_num_accepted_tokens_total".to_owned(),
                             )}
                             {metric_card(
-                                if passive.is_mtp() { "MTP ACCEPTANCE" } else { "SPEC ACCEPTANCE" }.to_owned(),
+                                (if passive.is_mtp() { "MTP ACCEPTANCE" } else { "SPEC ACCEPTANCE" }).to_owned(),
                                 passive_metric(passive.speculative_acceptance_rate, snapshot.passive_stale, |value| format!("{:.1}%", value * 100.0), "Derived from cumulative accepted / drafted counters; unavailable until the runtime exposes a nonzero draft count."),
                                 "llama.cpp /metrics · accepted_total / draft_total".to_owned(),
                             )}
@@ -736,7 +732,12 @@ mod tests {
 
     #[test]
     fn passive_poll_failure_retains_value_as_stale() {
-        let metric = passive_metric(Some(3.39), true, |value| format!("{value:.2}"), "runtime");
+        let metric = passive_metric(
+            Some(3.39),
+            true,
+            |value| format!("{value:.2}"),
+            "runtime",
+        );
         assert_eq!(metric.value, "3.39");
         assert_eq!(metric.state_label, "STALE");
     }
