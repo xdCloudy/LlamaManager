@@ -303,10 +303,10 @@ fn speculative_type_from_args(args: &[Value]) -> Option<String> {
                 .and_then(Value::as_str)
                 .map(ToOwned::to_owned);
         }
-        if let Some(value) = argument.strip_prefix("--spec-type=") {
-            if !value.is_empty() {
-                return Some(value.to_owned());
-            }
+        if let Some(value) = argument.strip_prefix("--spec-type=")
+            && !value.is_empty()
+        {
+            return Some(value.to_owned());
         }
         index += 1;
     }
